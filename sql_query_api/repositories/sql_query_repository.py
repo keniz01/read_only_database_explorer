@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import re
@@ -50,6 +51,8 @@ class SqlQueryRepository(ISqlQueryRepository):
         self._query_timeout_seconds = float(configured_timeout)
         if self._query_timeout_seconds <= 0:
             raise ValueError("SQL_QUERY_TIMEOUT_SECONDS must be greater than zero.")
+        self._max_row_limit = int(os.getenv("SQL_QUERY_MAX_ROW_LIMIT", "5000"))
+        self._max_result_bytes = int(os.getenv("SQL_QUERY_MAX_RESULT_BYTES", str(5 * 1024 * 1024)))  # 5MB
         self._query_cost_threshold = float(os.getenv("SQL_QUERY_COST_THRESHOLD", "12"))
         self._query_cost_action = os.getenv("SQL_QUERY_COST_ACTION", "deny").strip().lower()
         if self._query_cost_action not in {"allow", "warn", "deny"}:
@@ -274,12 +277,24 @@ class SqlQueryRepository(ISqlQueryRepository):
 
                     if result.returns_rows:
                         rows: Iterable[Row[Any]] = result.fetchall()
+                        if len(rows) > self._max_row_limit:
+                            raise SqlStatementExecutionException(
+                                f"Query result exceeds the maximum allowed row limit ({self._max_row_limit} rows)."
+                            )
+
                         result_dicts: List[Dict[str, Any]] = [
                             dict(row._mapping) for row in rows
                         ]
 
+                        # Check byte size
+                        serialized_size = len(json.dumps(result_dicts, default=str).encode("utf-8"))
+                        if serialized_size > self._max_result_bytes:
+                            raise SqlStatementExecutionException(
+                                f"Query result exceeds maximum allowed size ({self._max_result_bytes} bytes)."
+                            )
+
                         logging.info(
-                            f"SQL executed successfully, returned {len(result_dicts)} rows."
+                            f"SQL executed successfully, returned {len(result_dicts)} rows ({serialized_size} bytes)."
                         )
                         filtered_rows = self._apply_row_filter(result_dicts)
                         return self._apply_sensitive_column_masking(filtered_rows)

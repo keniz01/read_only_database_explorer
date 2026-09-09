@@ -6,6 +6,7 @@ from typing import Protocol
 import sqlparse
 from sqlparse import tokens as sql_tokens
 
+from repositories.sql_validators.ast_analyzer import AstSqlAnalyzer
 from repositories.sql_validators.rules.sql_rules import (
     MustBeSelectRule,
     NoCommentRule,
@@ -40,7 +41,7 @@ class SqlSafetyChecker(Protocol):
 
 
 class DefaultSqlSafetyChecker:
-    """Validator for "safe" SELECT SQL queries using a pluggable rule system."""
+    """Validator for "safe" SELECT SQL queries using AST parsing and a pluggable rule system."""
 
     def __init__(
         self,
@@ -55,6 +56,7 @@ class DefaultSqlSafetyChecker:
             table.lower(): {column.lower() for column in columns}
             for table, columns in (column_allowlist or {}).items()
         }
+        self.ast_analyzer = AstSqlAnalyzer()
         self.rules: list[SqlSafetyRule] = [
             # Fundamental
             SingleStatementRule(),
@@ -160,16 +162,21 @@ class DefaultSqlSafetyChecker:
 
         return selected_columns
 
-    def _enforces_allowlist(self, stmt) -> bool:
+    def _enforces_allowlist(self, stmt, raw: str) -> bool:
         if not self.table_allowlist and not self.column_allowlist:
             return True
 
-        tables = self._extract_table_names(stmt)
+        # Use AST extraction as the primary, most accurate mechanism
+        ast_tables = set(self.ast_analyzer.extract_tables(raw))
+        fallback_tables = self._extract_table_names(stmt)
+        tables = ast_tables or fallback_tables
+
         if self.table_allowlist and (tables - self.table_allowlist):
             return False
 
         if self.column_allowlist:
-            selected_columns = self._extract_selected_columns(stmt)
+            ast_columns = self.ast_analyzer.extract_selected_columns_by_table(raw)
+            selected_columns = ast_columns or self._extract_selected_columns(stmt)
             if any("*" in columns for columns in selected_columns.values()):
                 return False
 
@@ -241,7 +248,11 @@ class DefaultSqlSafetyChecker:
         if self._contains_forbidden_mutation(stmt):
             return False
 
-        return self._enforces_allowlist(stmt)
+        # Additional AST-level verification via sqlglot
+        if not self.ast_analyzer.is_strictly_read_only(query):
+            return False
+
+        return self._enforces_allowlist(stmt, query)
 
     def clean_and_validate_sql(self, sql: str) -> str:
         """

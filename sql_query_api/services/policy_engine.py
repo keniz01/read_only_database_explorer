@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from auth import Principal
+from repositories.sql_validators.ast_analyzer import AstSqlAnalyzer
 
 _SQL_KEYWORDS = {
     "select",
@@ -291,15 +292,25 @@ class PolicyEvaluator:
         )
 
 
+_ast_analyzer = AstSqlAnalyzer()
 _TABLE_PATTERN = re.compile(r"\b(?:from|join)\s+([a-zA-Z_][\w.]*)", re.IGNORECASE)
 _COLUMN_PATTERN = re.compile(r"\b([a-zA-Z_][\w]*)\s*(?:=|<>|!=|<|>|<=|>=|\bin\b|\blike\b)", re.IGNORECASE)
 
 
 def tables_touched(sql: str) -> list[str]:
+    """Extract tables touched using AST analyzer with regex fallback."""
+    ast_tables = _ast_analyzer.extract_tables(sql)
+    if ast_tables:
+        return ast_tables
     return list(dict.fromkeys(match.split(".")[-1].lower() for match in _TABLE_PATTERN.findall(sql)))
 
 
 def referenced_columns(sql: str) -> set[str]:
+    """Extract referenced columns using AST analyzer with regex fallback."""
+    ast_columns = _ast_analyzer.extract_referenced_columns(sql)
+    if ast_columns:
+        return ast_columns
+
     columns = {match.lower() for match in _COLUMN_PATTERN.findall(sql)}
     select_match = re.search(r"\bselect\s+(.*?)\s+\bfrom\b", sql, re.IGNORECASE | re.DOTALL)
     if not select_match:

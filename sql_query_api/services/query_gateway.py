@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import re
+import hashlib
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -44,15 +45,6 @@ class GovernedQueryRequest:
     params: dict[str, Any] | None = None
 
 
-def _tables_touched(sql: str) -> list[str]:
-    matches = re.findall(
-        r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_.]*)",
-        sql,
-        flags=re.IGNORECASE,
-    )
-    return list(dict.fromkeys(match.split(".")[-1] for match in matches))
-
-
 class GovernedQueryGateway:
     """Authenticate, resolve, validate, control, execute, and audit a query."""
 
@@ -92,14 +84,21 @@ class GovernedQueryGateway:
             raise PermissionError(decision.reason)
         cleaned_sql = apply_row_restrictions(cleaned_sql, decision.row_restrictions, request.principal)
         started_at = time.perf_counter()
+        query_hash = hashlib.sha256(cleaned_sql.encode("utf-8")).hexdigest()
+        audit_payload: dict[str, Any] = {
+            "user": request.principal.email,
+            "org_id": request.principal.org_id,
+            "database_id": binding.database_id,
+            "database_target": getattr(service.repository, "database_target", "primary"),
+            "query_hash": query_hash,
+            "tables_touched": tables_touched(cleaned_sql),
+        }
+        if os.getenv("AUDIT_LOG_RAW_SQL", "").strip().lower() in {"true", "1", "yes"}:
+            audit_payload["query"] = cleaned_sql
+
         self._audit(
             "sql_query",
-            user=request.principal.email,
-            org_id=request.principal.org_id,
-            database_id=binding.database_id,
-            database_target=getattr(service.repository, "database_target", "primary"),
-            query=cleaned_sql,
-            tables_touched=_tables_touched(cleaned_sql),
+            **audit_payload,
         )
         result = await service.execute_sql_statement(cleaned_sql, request.params)
         observe_query(
