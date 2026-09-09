@@ -5,6 +5,7 @@ This module serves as the main entry point for running the FastAPI application.
 All configuration, middleware, and route setup is delegated to dedicated modules.
 """
 
+import os
 import uvicorn
 from app_factory import create_app
 
@@ -12,10 +13,11 @@ from app_factory import create_app
 app = create_app()
 
 if __name__ == "__main__":
+    is_dev = os.getenv("ENVIRONMENT", "production").lower() in {"dev", "development", "local"} or os.getenv("DEBUG", "").lower() in {"true", "1"}
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
         port=8002,
-        reload=True,
+        reload=is_dev,
         log_level="info",
     )
