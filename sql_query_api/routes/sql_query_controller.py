@@ -297,8 +297,10 @@ class Query:
             raise Exception("Failed to introspect database schema.")
 
 
+from strawberry.extensions import QueryDepthLimiter
+
 # Create schema and router
-schema = strawberry.Schema(query=Query)
+schema = strawberry.Schema(query=Query, extensions=[QueryDepthLimiter(max_depth=6)])
 graphql_app = GraphQLRouter(schema)
 
 router = graphql_app  # Export router for FastAPI
