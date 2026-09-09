@@ -26,7 +26,18 @@ jobs:
           cd sql_query_api
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest pytest-asyncio pytest-mock httpx aiosqlite
+          python -m pip install pytest pytest-asyncio pytest-mock httpx aiosqlite pytest-security
+          # Security tools
+          python -m pip install bandit pip-audit
+
+      - name: Run Bandit
+        run: |
+          cd sql_query_api
+          bandit -r . -lll
+
+      - name: Run pip-audit
+        run: |
+          pip-audit
 
       - name: Run pytest
         run: |
