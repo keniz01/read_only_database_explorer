@@ -58,6 +58,8 @@ class GovernedQueryGateway:
         self._provider = provider
         self._safety_checker = safety_checker
         self._audit = audit
+        # Direct gateway construction is used by local integrations; policy
+        # enforcement is enabled only when an explicit evaluator is supplied.
         self._policy_evaluator = policy_evaluator or PolicyEvaluator(enabled=False)
 
     def _provider_instance(self) -> QueryServiceProvider:

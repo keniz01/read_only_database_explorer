@@ -215,8 +215,15 @@ class PolicyEvaluator:
     def from_environment(cls) -> "PolicyEvaluator":
         import os
 
+        # Trigger CI rebuild
         raw = os.getenv("POLICY_POLICIES_JSON", "").strip()
         if not raw:
+            # In production we require an explicit policy configuration; otherwise fall back to an empty evaluator.
+            if os.getenv("ENVIRONMENT", "").lower() == "production" and not os.getenv("CI"):
+                raise RuntimeError(
+                    "Missing required POLICY_POLICIES_JSON environment variable for policy configuration."
+                )
+            # Non-production (e.g., CI, local dev) – disable policy enforcement.
             return cls(enabled=False)
         try:
             values = json.loads(raw)
