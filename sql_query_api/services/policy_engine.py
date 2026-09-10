@@ -217,7 +217,8 @@ class PolicyEvaluator:
 
         raw = os.getenv("POLICY_POLICIES_JSON", "").strip()
         if not raw:
-            return cls(enabled=False)
+            # No policy configuration provided – abort startup.
+            raise RuntimeError("Missing required POLICY_POLICIES_JSON environment variable for policy configuration.")
         try:
             values = json.loads(raw)
             if not isinstance(values, list) or not all(isinstance(item, dict) for item in values):

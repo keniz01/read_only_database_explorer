@@ -58,7 +58,7 @@ class GovernedQueryGateway:
         self._provider = provider
         self._safety_checker = safety_checker
         self._audit = audit
-        self._policy_evaluator = policy_evaluator or PolicyEvaluator(enabled=False)
+        self._policy_evaluator = policy_evaluator or PolicyEvaluator()
 
     def _provider_instance(self) -> QueryServiceProvider:
         if hasattr(self._provider, "resolve"):
