@@ -17,6 +17,11 @@ from repositories.sql_validators.rules.sql_rules import (
     SingleStatementRule,
     SqlSafetyRule,
 )
+from repositories.sql_validators.rules.advanced_sql_rules import (
+    AllowedNodeTypesRule,
+    ForbiddenFunctionsRule,
+    ForbiddenTableRule,
+)
 from repositories.sql_validators.sql_cleaner import clean_sql
 
 
@@ -78,7 +83,31 @@ class DefaultSqlSafetyChecker:
                     "merge",
                     "call",
                     "execute",
+                    "copy",
                 ],
+            ),
+            # Advanced AST‑based rules
+            AllowedNodeTypesRule(
+                allowed={
+                    "select",
+                    "from",
+                    "join",
+                    "where",
+                    "group",
+                    "having",
+                    "order",
+                    "limit",
+                    "identifier",
+                    "literal",
+                    "column",
+                    "expression",
+                }
+            ),
+            ForbiddenFunctionsRule(
+                forbidden={"pg_sleep", "pg_terminate_backend", "pg_execute_server_program"}
+            ),
+            ForbiddenTableRule(
+                forbidden_prefixes={"pg_", "information_schema"}
             ),
         ]
 
