@@ -19,6 +19,7 @@ from services.tenant_database_resolver import (
     TenantDatabaseResolutionError,
     TenantDatabaseResolver,
 )
+from services.policy_engine import PolicyEvaluator
 
 
 TEST_DB_A = Path(__file__).with_name("tenant_org_a.sqlite")
@@ -94,6 +95,18 @@ def test_production_configuration_never_uses_legacy_database_url(monkeypatch: py
 
     with pytest.raises(RuntimeError, match="Tenant database configuration is required"):
         TenantDatabaseResolver.from_environment()
+
+
+def test_policy_configuration_is_required_only_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POLICY_POLICIES_JSON", raising=False)
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.delenv("CI", raising=False)
+
+    assert PolicyEvaluator.from_environment().enabled is False
+
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(RuntimeError, match="Missing required POLICY_POLICIES_JSON"):
+        PolicyEvaluator.from_environment()
 
 
 def test_replica_configuration_is_resolved_and_audited() -> None:

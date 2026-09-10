@@ -223,8 +223,8 @@ class PolicyEvaluator:
                 raise RuntimeError(
                     "Missing required POLICY_POLICIES_JSON environment variable for policy configuration."
                 )
-            # Non-production (e.g., CI, local dev) – allow the evaluator to start with no policies.
-            return cls()
+            # Non-production (e.g., CI, local dev) – disable policy enforcement.
+            return cls(enabled=False)
         try:
             values = json.loads(raw)
             if not isinstance(values, list) or not all(isinstance(item, dict) for item in values):
