@@ -36,7 +36,7 @@ echo "Reviewing staged changes with opencode..."
 
 if ! REVIEW_OUTPUT=$("$OPENCODE_BIN" run --command code-review 2>&1); then
   REVIEW_EXIT=$?
-  echo "⚠️  opencode review failed (exit $REVIEW_EXIT). Skipping automated review; manual gate still applies."
+  echo "⚠️  opencode review failed (exit $REVIEW_EXIT). Skipping automated review; manual gate still applies when run interactively."
   REVIEW_OUTPUT=""
 fi
 

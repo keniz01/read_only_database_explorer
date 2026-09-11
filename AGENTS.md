@@ -28,7 +28,8 @@ Run checks from inside the service dir with its venv (e.g. `sql_query_api/.venv/
   (source: `.githooks/pre-commit`, installed to `.git/hooks/pre-commit`).
   It runs `opencode run --command code-review` (skill: `.opencode/skills/code-review/`,
   read-only agent: `.opencode/agent/code-reviewer.md`) against the staged diff and
-  requires a y/N approval.
+  requires a y/N approval when run interactively; in non-interactive contexts the
+  review runs, its report is printed, and the commit proceeds.
 - Toggle to advisory with `BLOCK=false` in `.githooks/pre-commit`; uninstall with
   `rm .git/hooks/pre-commit`.
 
