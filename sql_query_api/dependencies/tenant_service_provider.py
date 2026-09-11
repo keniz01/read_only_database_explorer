@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from auth import Principal
 from punq import Container
 
+from auth import Principal
 from dependencies.dependency_container import setup_container
 from services.abstract_sql_query_service import ISqlQueryService
 from services.tenant_database_resolver import TenantDatabaseConfig, TenantDatabaseResolver

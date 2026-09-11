@@ -14,7 +14,6 @@ from config.app_logger import log_audit_event
 from metrics import observe_query
 from repositories.sql_validators.sql_safety_checker import SqlSafetyChecker
 from services.abstract_sql_query_service import ISqlQueryService
-from services.tenant_database_resolver import TenantDatabaseConfig
 from services.policy_engine import (
     PolicyDecision,
     PolicyEvaluator,
@@ -23,6 +22,7 @@ from services.policy_engine import (
     referenced_columns,
     tables_touched,
 )
+from services.tenant_database_resolver import TenantDatabaseConfig
 
 
 class QueryServiceProvider(Protocol):
@@ -111,6 +111,7 @@ class GovernedQueryGateway:
         return mask_rows(result, decision.masked_columns, cleaned_sql)
 
     def evaluate(self, request: GovernedQueryRequest, sql: str | None = None) -> PolicyDecision:
+        """Evaluate the policy decision for a request against the given statement."""
         statement = sql or request.sql
         return self._policy_evaluator.evaluate(
             request.principal,

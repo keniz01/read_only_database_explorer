@@ -1,19 +1,23 @@
 import logging as logger
-from typing import Any, Callable, List, Dict
+from collections.abc import Callable
+from typing import Any
 
 import strawberry
+from strawberry.extensions import QueryDepthLimiter
 from strawberry.fastapi import GraphQLRouter
 
+from auth import Principal
 from config.app_logger import log_audit_event
 from dependencies.tenant_service_provider import TenantServiceProvider
-from services.abstract_sql_query_service import ISqlQueryService
 from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
+from services.abstract_sql_query_service import ISqlQueryService
+from services.policy_engine import PolicyEvaluator
 from services.query_gateway import GovernedQueryGateway, GovernedQueryRequest
 from services.tenant_database_resolver import (
-    TenantDatabaseResolver,
+    TenantDatabaseConfig,
     TenantDatabaseResolutionError,
+    TenantDatabaseResolver,
 )
-from services.policy_engine import PolicyEvaluator
 
 _tenant_database_resolver = TenantDatabaseResolver.from_environment()
 _tenant_service_provider = TenantServiceProvider(_tenant_database_resolver)
@@ -32,6 +36,8 @@ _query_gateway = GovernedQueryGateway(
 # Strawberry input type for the query
 @strawberry.input
 class SqlStatementRequest:
+    """GraphQL input type for a governed SQL request."""
+
     sql_statement: str = ""
     database_id: str = "default"
 
@@ -39,6 +45,8 @@ class SqlStatementRequest:
 # JSON scalar for dynamic result sets
 @strawberry.scalar(description="Arbitrary JSON object")
 class JSON:
+    """GraphQL scalar that serializes arbitrary JSON values."""
+
     serialize: Callable[[Any], Any] = staticmethod(lambda value: value)
     parse_value: Callable[[Any], Any] = staticmethod(lambda value: value)
 
@@ -46,12 +54,16 @@ class JSON:
 # Schema Info type for getTableSchema (vector-embedding-based) response
 @strawberry.type
 class SchemaInfo:
+    """GraphQL response type wrapping a schema text payload."""
+
     schema: str
 
 
 # Types for dynamic schema introspection
 @strawberry.type
 class ColumnInfo:
+    """GraphQL type describing a single table column."""
+
     name: str
     type: str
     nullable: bool
@@ -60,6 +72,8 @@ class ColumnInfo:
 
 @strawberry.type
 class ForeignKeyInfo:
+    """GraphQL type describing a foreign key relationship."""
+
     column: str
     foreign_schema: str
     foreign_table: str
@@ -68,19 +82,25 @@ class ForeignKeyInfo:
 
 @strawberry.type
 class TableInfo:
+    """GraphQL type describing a table and its schema details."""
+
     name: str
     schema_name: str
-    columns: List[ColumnInfo]
-    foreign_keys: List[ForeignKeyInfo]
+    columns: list[ColumnInfo]
+    foreign_keys: list[ForeignKeyInfo]
 
 
 @strawberry.type
 class DatabaseSchemaInfo:
-    tables: List[TableInfo]
+    """GraphQL response type containing introspected tables."""
+
+    tables: list[TableInfo]
 
 
 @strawberry.type
 class QueryCostEstimate:
+    """GraphQL type describing a relative query cost estimate."""
+
     score: int
     level: str
     reason: str
@@ -88,18 +108,24 @@ class QueryCostEstimate:
 
 @strawberry.type
 class PolicySimulation:
+    """GraphQL type exposing a policy evaluation result."""
+
     allowed: bool
     reason: str
-    policy_ids: List[str]
+    policy_ids: list[str]
     row_restrictions: JSON
-    masked_columns: List[str]
+    masked_columns: list[str]
 
 
 # GraphQL Query type
 @strawberry.type
 class Query:
+    """Root GraphQL query type with governed and introspection fields."""
+
     @staticmethod
-    def _request_context(info: strawberry.Info, database_id: str | None):
+    def _request_context(
+        info: strawberry.Info, database_id: str | None
+    ) -> tuple[Principal, TenantDatabaseConfig, ISqlQueryService]:
         request_obj = getattr(info, "context", {}).get("request") if getattr(info, "context", None) else None
         principal = getattr(getattr(request_obj, "state", None), "principal", None) if request_obj else None
         if principal is None:
@@ -116,6 +142,7 @@ class Query:
 
     @strawberry.field(description="Health check")
     def ping(self) -> str:
+        """Return a liveness response for health checks."""
         return "GraphQL SQL Query API is running!"
 
     @strawberry.field(description="Estimate the relative computational cost of a SELECT query")
@@ -125,6 +152,7 @@ class Query:
         sql_statement: str,
         database_id: str = "default",
     ) -> QueryCostEstimate:
+        """Estimate the relative computational cost of a SELECT query."""
         sql = sql_statement.strip()
         if not sql:
             raise ValueError("SQL statement cannot be empty.")
@@ -138,7 +166,8 @@ class Query:
         )
 
     @strawberry.field(description="Executes a SQL SELECT statement")
-    async def execute_sql_statement(self, info: strawberry.Info, request: SqlStatementRequest) -> List[JSON]:
+    async def execute_sql_statement(self, info: strawberry.Info, request: SqlStatementRequest) -> list[JSON]:
+        """Execute a governed SELECT statement and return its rows."""
         sql = request.sql_statement.strip()
         principal, binding, service = Query._request_context(info, request.database_id)
 
@@ -162,11 +191,11 @@ class Query:
         except ValueError as e:
             # ValueError from cleaning/validation - provide clear error message
             logger.warning("SQL validation failed: %s", str(e))
-            raise ValueError(str(e))
-        except Exception as e:
+            raise ValueError(str(e)) from e
+        except Exception:
             logger.exception("Error executing SQL")
             # Don't expose internal error details to client
-            raise Exception("Failed to execute SQL statement. Please verify your query syntax.")
+            raise Exception("Failed to execute SQL statement. Please verify your query syntax.") from None
 
     @strawberry.field(description="Explain policy enforcement without executing SQL")
     def simulate_policy(
@@ -174,6 +203,7 @@ class Query:
         info: strawberry.Info,
         request: SqlStatementRequest,
     ) -> PolicySimulation:
+        """Evaluate policy enforcement without executing SQL."""
         principal, binding, _ = Query._request_context(info, request.database_id)
         if principal.role != "admin":
             raise PermissionError("Policy simulation requires an administrator role.")
@@ -199,17 +229,20 @@ class Query:
     async def get_table_schema(
         self,
         info: strawberry.Info,
-        embeddings: List[float],
+        embeddings: list[float],
         database_id: str = "default",
     ) -> SchemaInfo:
         """
-        Retrieves relevant database schema information using vector similarity search.
+        Retrieve relevant database schema information using vector similarity search.
 
         Args:
-            embeddings: List of float values representing the query embedding vector (768 dimensions)
+            info: GraphQL request context.
+            embeddings: List of float values representing the query embedding vector.
+            database_id: Logical database identifier to introspect.
 
         Returns:
-            SchemaInfo containing formatted schema information
+            SchemaInfo containing formatted schema information.
+
         """
         # Input validation: Check if embeddings list is provided
         if not embeddings:
@@ -228,16 +261,16 @@ class Query:
                 database_id=binding.database_id,
             )
             logger.info("Fetching table schema with embeddings (dimensions=%d)", len(embeddings))
-            result: Dict[str, Any] = await service.get_table_schema(embeddings)
+            result: dict[str, Any] = await service.get_table_schema(embeddings)
             schema_text = result.get("schema", "")
             return SchemaInfo(schema=schema_text)
-        except Exception as e:
+        except Exception:
             logger.exception("Error fetching table schema")
             # Don't expose internal error details to client
             raise Exception(
                 "Schema embeddings are unavailable or incompatible with 768 dimensions. "
                 "Regenerate schema embeddings before using text-to-SQL."
-            )
+            ) from None
 
     @strawberry.field(description="Dynamically introspect the connected database schema")
     async def introspect_schema(
@@ -246,8 +279,9 @@ class Query:
         database_id: str = "default",
     ) -> DatabaseSchemaInfo:
         """
-        Reads the live database schema (tables, columns, PKs, FKs) directly from
+        Read the live database schema (tables, columns, PKs, FKs) directly from
         information_schema (PostgreSQL) or sqlite_master/PRAGMA (SQLite).
+
         No hard-coded table names are assumed.
         """
         try:
@@ -259,10 +293,10 @@ class Query:
                 database_id=binding.database_id,
             )
             logger.info("Introspecting database schema")
-            result: Dict[str, Any] = await service.introspect_schema()
-            raw_tables: List[Dict[str, Any]] = result.get("tables", [])
+            result: dict[str, Any] = await service.introspect_schema()
+            raw_tables: list[dict[str, Any]] = result.get("tables", [])
 
-            tables: List[TableInfo] = []
+            tables: list[TableInfo] = []
             for t in raw_tables:
                 columns = [
                     ColumnInfo(
@@ -292,12 +326,10 @@ class Query:
                 )
 
             return DatabaseSchemaInfo(tables=tables)
-        except Exception as e:
+        except Exception:
             logger.exception("Error introspecting database schema")
-            raise Exception("Failed to introspect database schema.")
+            raise Exception("Failed to introspect database schema.") from None
 
-
-from strawberry.extensions import QueryDepthLimiter
 
 # Create schema and router
 schema = strawberry.Schema(query=Query, extensions=[QueryDepthLimiter(max_depth=6)])

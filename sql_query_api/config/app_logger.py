@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-
 try:
     from opentelemetry import trace
 except ImportError:  # pragma: no cover - optional dependency in local/dev setups
@@ -23,10 +22,10 @@ def configure_telemetry() -> None:
         return
 
     try:
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         from opentelemetry.sdk.resources import Resource
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
         resource = Resource.create({"service.name": os.getenv("OTEL_SERVICE_NAME", "sql-query-api")})
         provider = TracerProvider(resource=resource)
@@ -37,12 +36,13 @@ def configure_telemetry() -> None:
 
 
 # Add a default 'correlation_id' if not provided
-def ensure_correlation_id(record):
+def ensure_correlation_id(record: dict[str, object]) -> bool:
+    """Attach a default correlation ID to every log record."""
     record["extra"].setdefault("correlation_id", "N/A")
     return True
 
 
-def log_audit_event(event_type: str, **payload):
+def log_audit_event(event_type: str, **payload: object) -> None:
     """Emit a structured JSON audit event to stdout with correlation metadata."""
     event = {
         "event": event_type,

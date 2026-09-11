@@ -60,6 +60,7 @@ class AstSqlAnalyzer:
                 return []
 
     def is_single_statement(self, sql: str) -> bool:
+        """Return whether the SQL parses to exactly one statement."""
         stmts = self.parse_statements(sql)
         return len(stmts) == 1
 

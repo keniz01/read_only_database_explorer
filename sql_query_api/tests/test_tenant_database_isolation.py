@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,13 +15,12 @@ from app_factory import create_app
 from auth import Principal
 from dependencies.tenant_service_provider import TenantServiceProvider
 from routes import sql_query_controller
+from services.policy_engine import PolicyEvaluator
 from services.tenant_database_resolver import (
     TenantDatabaseConfig,
     TenantDatabaseResolutionError,
     TenantDatabaseResolver,
 )
-from services.policy_engine import PolicyEvaluator
-
 
 TEST_DB_A = Path(__file__).with_name("tenant_org_a.sqlite")
 TEST_DB_B = Path(__file__).with_name("tenant_org_b.sqlite")
@@ -32,7 +32,12 @@ async def _create_database(path: Path, table: str, value: str) -> AsyncEngine:
     engine = create_async_engine(f"sqlite+aiosqlite:///{path}")
     async with engine.begin() as connection:
         await connection.execute(text(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, value TEXT)"))
-        await connection.execute(text(f"INSERT INTO {table} (id, value) VALUES (1, :value)"), {"value": value})
+        await connection.execute(
+            text(  # noqa: S608 - table name comes from a fixed test constant
+                f"INSERT INTO {table} (id, value) VALUES (1, :value)"  # noqa: S608 - not user input
+            ),
+            {"value": value},
+        )
     await engine.dispose()
     return engine
 
@@ -159,12 +164,12 @@ def tenant_client(
     monkeypatch.setattr(sql_query_controller, "_tenant_service_provider", TenantServiceProvider(resolver))
     monkeypatch.setattr(sql_query_controller, "_sql_query_service", None)
 
-    def validate(token: str | None):
+    def validate(token: str | None) -> dict[str, Any] | None:
         return {
             "sub": "user-a",
             "email": "a@example.com",
             "https://app.secure-db-access-gateway.org/tenant_id":
-                "org-a" if token == "org-a-token" else "org-b",
+                "org-a" if token == "org-a-token" else "org-b",  # noqa: S105 - test-only bearer tokens
             "roles": ["viewer"],
         } if token in {"org-a-token", "org-b-token"} else None
 
@@ -238,11 +243,13 @@ def test_embedding_lookup_receives_trusted_tenant_context(
     calls: list[tuple[str, str]] = []
 
     class FakeService:
-        async def get_table_schema(self, embeddings):
+        async def get_table_schema(self, embeddings: list[float]) -> dict[str, str]:
             return {"schema": "org-a schema"}
 
     class FakeProvider:
-        def resolve(self, principal, database_id):
+        def resolve(
+            self, principal: Principal, database_id: str | None
+        ) -> tuple[TenantDatabaseConfig, FakeService]:
             calls.append((principal.org_id, database_id))
             return (
                 TenantDatabaseConfig("org-a", database_id, "sqlite+aiosqlite:///server-owned"),

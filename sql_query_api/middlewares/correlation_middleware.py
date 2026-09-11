@@ -1,6 +1,7 @@
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
 
@@ -10,7 +11,9 @@ except ImportError:  # pragma: no cover
     trace = None
 
 
-async def correlation_id_middleware(request: Request, call_next) -> Response:
+async def correlation_id_middleware(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
     """
     Middleware that injects a Correlation ID into every request and response.
     Useful for distributed tracing and log correlation.

@@ -2,31 +2,23 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app_factory import create_app
 from auth import Principal
-from dependencies.tenant_service_provider import TenantServiceProvider
-from repositories.sql_validators.ast_analyzer import AstSqlAnalyzer
 from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
-from routes import sql_query_controller
 from services.policy_engine import (
-    Policy,
-    PolicyEvaluator,
     apply_row_restrictions,
     mask_rows,
-    tables_touched,
-    referenced_columns,
 )
 from services.query_gateway import GovernedQueryGateway, GovernedQueryRequest
 from services.tenant_database_resolver import (
     TenantDatabaseConfig,
+    TenantDatabaseResolutionError,
     TenantDatabaseResolver,
 )
 
@@ -162,7 +154,7 @@ class TestAdversarialTenantIsolation:
         principal_a = Principal("user-a", "a@corp.com", "tenant-a", frozenset({"viewer"}))
 
         # Tenant A tries to resolve Tenant B database ID -> Must fail closed
-        with pytest.raises(Exception):
+        with pytest.raises(TenantDatabaseResolutionError):
             resolver.resolve(principal_a, "db-b")
 
     @pytest.mark.asyncio
@@ -202,7 +194,7 @@ class TestGraphQLQueryDepthSecurity:
     """Verify that deeply nested GraphQL queries (> 6 levels) are rejected."""
 
     def test_query_depth_limiter_rejects_excessive_depth(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        def fake_validate(token: str | None):
+        def fake_validate(token: str | None) -> dict[str, Any] | None:
             return {
                 "sub": "auth0|user-123",
                 "email": "alice@example.com",
