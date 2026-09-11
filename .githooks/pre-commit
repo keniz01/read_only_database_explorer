@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────
+# .githooks/pre-commit — blocking code review gate.
+#
+# INSTALL (local copy, since .git/ is not tracked):
+#   cp .githooks/pre-commit .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Runs `opencode run --command code-review` (non-interactive) against the
+# staged diff, prints the findings, then requires a manual y/N before the
+# commit is allowed. In non-interactive contexts (CI, piped stdin) the review
+# still runs and its report is printed, but the y/N gate is skipped.
+#
+# Toggle: BLOCK=false turns this into an advisory report that never blocks.
+# Uninstall: rm .git/hooks/pre-commit
+# ─────────────────────────────────────────────────────────────
+
+set -euo pipefail
+
+BLOCK=true
+OPENCODE_BIN="${OPENCODE_BIN:-opencode}"
+
+if git diff --cached --quiet; then
+  echo "No staged changes; skipping code review gate."
+  exit 0
+fi
+
+export NO_COLOR=1
+
+echo ""
+echo "╔══════════════════════════════════════════════════╗"
+echo "║        🔍 Code Review (opencode)                  ║"
+echo "╚══════════════════════════════════════════════════╝"
+echo ""
+echo "Reviewing staged changes with opencode..."
+
+if ! REVIEW_OUTPUT=$("$OPENCODE_BIN" run --command code-review 2>&1); then
+  REVIEW_EXIT=$?
+  echo "⚠️  opencode review failed (exit $REVIEW_EXIT). Skipping automated review; manual gate still applies."
+  REVIEW_OUTPUT=""
+fi
+
+echo ""
+echo "$REVIEW_OUTPUT"
+echo ""
+
+if [ "$BLOCK" = true ] && [ -t 0 ]; then
+  read -r -p "Review complete. Approve this commit? [y/N] " response
+  case "$response" in
+    [yY][eE][sS]|[yY])
+      echo "✅ Commit approved."
+      ;;
+    *)
+      echo "❌ Commit blocked by review gate."
+      exit 1
+      ;;
+  esac
+elif [ "$BLOCK" = true ]; then
+  echo "Non-interactive commit; review report shown above, proceeding."
+fi
+
+exit 0

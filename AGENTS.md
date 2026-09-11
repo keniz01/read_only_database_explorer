@@ -22,6 +22,16 @@ Run checks from inside the service dir with its venv (e.g. `sql_query_api/.venv/
 - `sql_query_api/.pre-commit-config.yaml` uses a custom hook that lints only changed lines of staged files: `python .pre-commit-scripts/ruff-diff-check.py`.
 - Full `ruff check .` reports 600+ pre-existing errors and is NOT part of CI. Don't try to make the whole repo ruff-clean; keep new and edited lines compliant.
 
+## Commit review gate
+
+- A blocking pre-commit hook runs an opencode code-review before every commit
+  (source: `.githooks/pre-commit`, installed to `.git/hooks/pre-commit`).
+  It runs `opencode run --command code-review` (skill: `.opencode/skills/code-review/`,
+  read-only agent: `.opencode/agent/code-reviewer.md`) against the staged diff and
+  requires a y/N approval.
+- Toggle to advisory with `BLOCK=false` in `.githooks/pre-commit`; uninstall with
+  `rm .git/hooks/pre-commit`.
+
 ## Env & config gotchas
 
 - `ENVIRONMENT` defaults to `production` in `sql_query_api/main.py`. In production (and not `CI`), startup fails fast if `POLICY_POLICIES_JSON` or `POLICY_POLICIES_JSON_FILE` is missing (`services/policy_engine.py`). For local dev runs set `ENVIRONMENT=dev` (also enables uvicorn reload).
