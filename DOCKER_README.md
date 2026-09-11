@@ -31,20 +31,27 @@ This project now supports running the entire application stack using Docker Comp
    ```
 
 This will start:
-- **Nginx** (reverse proxy) on port 8080 – proxies Auth0 API requests
-- Auth0 API on port 8001 (also reachable via nginx at http://localhost:8080/api)
+- **Nginx** (reverse proxy / TLS edge) on ports 8080 (HTTP→HTTPS redirect) and 8443 (HTTPS) – proxies Auth0 API requests
+- Auth0 API on port 8001 (also reachable via nginx at https://localhost:8443/api)
 - SQL Query API on port 8002
 - Web App on port 5173
 
 **Note**: PostgreSQL runs on your local machine, not in a container.
 
+**TLS**: `setup-secrets.sh` generates a self-signed certificate
+(`secrets/web_tls_cert.pem` / `secrets/web_tls_key.pem`). Accept the browser
+warning during local development and replace with a trusted CA certificate for
+production. Because HTTPS is enforced, the browser stores session cookies with
+the `Secure` flag.
+
 ## Services
 
-### Nginx (Reverse Proxy)
+### Nginx (Reverse Proxy / TLS edge)
 - **Image**: nginx:alpine
-- **Port**: 8080
-- **Role**: Proxies `/api` requests from the web app to the Auth0 API service
+- **Ports**: 8080 (HTTP, redirects to HTTPS), 8443 (HTTPS)
+- **Role**: Terminates TLS and proxies `/api` requests from the web app to the Auth0 API service
 - **Config**: `./nginx/nginx.conf`
+- **TLS certs**: mounted from `secrets/web_tls_cert.pem` and `secrets/web_tls_key.pem`
 
 ### Auth0 API
 - **Build**: ./auth0_api
@@ -121,7 +128,7 @@ docker-compose up --build
 
 The Docker setup creates a complete development environment with:
 
-- **Nginx reverse proxy** – Web app calls `http://localhost:8080/api` for auth; nginx forwards to auth0_api
+- **Nginx reverse proxy / TLS edge** – Web app calls `https://localhost:8443/api` for auth; nginx terminates TLS and forwards to auth0_api
 - Isolated PostgreSQL database
 - Backend APIs with proper networking
 - Frontend served with hot reload
@@ -131,5 +138,5 @@ The Docker setup creates a complete development environment with:
 ### Request flow (Auth API)
 
 ```
-Browser (localhost:5173) → nginx (localhost:8080/api) → auth0_api (internal:8001)
+Browser (localhost:5173) → nginx (localhost:8443/api, TLS) → auth0_api (internal:8001)
 ```

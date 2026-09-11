@@ -106,6 +106,22 @@ cat > secrets/tenant_databases.json << 'EOF'
 ]
 EOF
 
+cat > secrets/policy_policies.json << 'EOF'
+[]
+EOF
+
+# Generate a self-signed TLS certificate for the nginx edge.
+# Replace with a certificate from a trusted CA before real production use.
+openssl req -x509 -nodes -newkey rsa:2048 \
+  -keyout secrets/web_tls_key.pem \
+  -out secrets/web_tls_cert.pem \
+  -days 365 \
+  -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,DNS:web-app,DNS:auth0_api,DNS:sql_query_api,IP:127.0.0.1" 2>/dev/null
+if [ ! -f secrets/web_tls_cert.pem ] || [ ! -s secrets/web_tls_cert.pem ]; then
+  echo "⚠️  openssl certificate generation failed. Create secrets/web_tls_cert.pem and secrets/web_tls_key.pem manually."
+fi
+
 echo "✅ Secret files created!"
 echo ""
 echo "Next steps:"
@@ -113,3 +129,4 @@ echo "1. Edit each file in the secrets/ directory with your actual credentials"
 echo "2. Run: docker-compose up --build"
 echo ""
 echo "For production, move secrets/ outside the repository and update docker-compose.yml paths."
+echo "Replace the self-signed web_tls_cert.pem / web_tls_key.pem with a trusted CA certificate."
