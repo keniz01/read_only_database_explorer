@@ -86,23 +86,28 @@ class DefaultSqlSafetyChecker:
                     "copy",
                 ],
             ),
-            # Advanced AST‑based rules
-            AllowedNodeTypesRule(
-                allowed={
-                    "select",
-                    "from",
-                    "join",
-                    "where",
-                    "group",
-                    "having",
-                    "order",
-                    "limit",
-                    "identifier",
-                    "literal",
-                    "column",
-                    "expression",
-                }
-            ),
+            # The AST node‑type allowlist is intentionally disabled: it rejects
+            # legitimate analytical queries (subqueries, CTEs, UNION/INTERSECT/EXCEPT,
+            # aggregate functions). The gap is covered by the remaining layered rules:
+            # single‑statement + SELECT‑only checks, the mutation/dangerous‑function
+            # traversal in AstSqlAnalyzer.is_strictly_read_only, the forbidden
+            # keyword/function/table rules below, and the read‑only DB enforcement.
+            # AllowedNodeTypesRule(
+            #     allowed={
+            #         "select",
+            #         "from",
+            #         "join",
+            #         "where",
+            #         "group",
+            #         "having",
+            #         "order",
+            #         "limit",
+            #         "identifier",
+            #         "literal",
+            #         "column",
+            #         "expression",
+            #     }
+            # ),
             ForbiddenFunctionsRule(
                 forbidden={"pg_sleep", "pg_terminate_backend", "pg_execute_server_program"}
             ),

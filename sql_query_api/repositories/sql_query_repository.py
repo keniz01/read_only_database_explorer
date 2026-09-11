@@ -58,6 +58,12 @@ class SqlQueryRepository(ISqlQueryRepository):
         if self._query_cost_action not in {"allow", "warn", "deny"}:
             self._query_cost_action = "deny"
 
+        # New security‑related configuration
+        # Lock timeout in seconds (default 5 seconds)
+        self._lock_timeout_ms: int = int(float(os.getenv("SQL_LOCK_TIMEOUT_SECONDS", "5")) * 1000)
+        # Optional dedicated read‑only role name; if set, connections will SET ROLE to it
+        self._readonly_role: str | None = os.getenv("SQL_READONLY_ROLE") or None
+
     @property
     def database_target(self) -> str:
         return self._database_target
@@ -188,12 +194,26 @@ class SqlQueryRepository(ISqlQueryRepository):
             conn: AsyncConnection = await self._engine.connect()
             try:
                 if conn.dialect.name == "postgresql":
+                    # Enforce read‑only transaction
                     await conn.execute(text("SET TRANSACTION READ ONLY;"))
+                    # Apply statement timeout (already set in __init__)
                     await conn.execute(
                         text(f"SET LOCAL statement_timeout = '{int(self._query_timeout_seconds * 1000)}';")
                     )
+                    # Apply lock timeout to avoid long‑running lock waits
+                    # (PostgreSQL lock_timeout is expressed in milliseconds)
+                    await conn.execute(
+                        text(f"SET LOCAL lock_timeout = '{int(self._lock_timeout_ms)}';")
+                    )
+                    # Optionally switch to a dedicated read‑only role if configured
+                    if self._readonly_role:
+                        await conn.execute(text(f"SET ROLE {self._readonly_role};"))
                     if schema_name:
                         await conn.execute(text(f"SET search_path TO {schema_name}"))
+                else:
+                    # SQLite read‑only enforcement is handled via the connection URI (mode=ro),
+                    # so no per‑connection setup is required here.
+                    pass
                 yield conn
             finally:
                 await conn.close()
