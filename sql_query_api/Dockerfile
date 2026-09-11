@@ -10,7 +10,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml uv.lock ./
 RUN pip install --no-cache-dir uv && \
     uv venv /opt/venv && \
-    VIRTUAL_ENV=/opt/venv uv pip install --no-cache -r <(uv pip compile pyproject.toml)
+    uv pip compile pyproject.toml -o /tmp/requirements.txt && \
+    VIRTUAL_ENV=/opt/venv uv pip install --no-cache -r /tmp/requirements.txt
 
 # Stage 2: Minimal runtime
 FROM python:3.12-slim AS runner
