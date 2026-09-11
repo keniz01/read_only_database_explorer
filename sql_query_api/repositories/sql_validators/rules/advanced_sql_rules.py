@@ -43,7 +43,7 @@ class AllowedNodeTypesRule:
 class ForbiddenFunctionsRule:
     """Reject queries that reference disallowed functions.
 
-    The rule looks for ``sqlglot.exp.Function`` nodes and checks the function
+    The rule looks for ``sqlglot.exp.Func`` nodes and checks the function
     name against a user‑provided ``forbidden`` set (case‑insensitive).
     """
 
@@ -56,7 +56,7 @@ class ForbiddenFunctionsRule:
         except Exception:
             return False
         for node in parsed.walk():
-            if isinstance(node, exp.Function):
+            if isinstance(node, exp.Func):
                 func_name = node.name.lower()
                 if func_name in self.forbidden:
                     return False

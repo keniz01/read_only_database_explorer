@@ -842,7 +842,7 @@ requires-dist = [
     { name = "punq", specifier = ">=0.7.0" },
     { name = "pyjwt", specifier = ">=2.10.1" },
     { name = "sqlalchemy", specifier = ">=2.0.44" },
-    { name = "sqlglot", specifier = ">=25.0.0" },
+    { name = "sqlglot", specifier = ">=30.0.0,<31" },
     { name = "sqlparse", specifier = ">=0.5.3" },
     { name = "starlette", specifier = ">=0.49.3" },
     { name = "strawberry-graphql", extras = ["debug-server", "fastapi"], specifier = ">=0.284.2" },
