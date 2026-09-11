@@ -27,7 +27,7 @@ The Secure DB Access Gateway is a secure, full-stack application designed to saf
    docker-compose up --build
    ```
    - Web App: `http://localhost:5173`
-   - Nginx Gateway: `http://localhost:8080`
+   - Nginx Gateway: `https://localhost:8443` (TLS; `http://localhost:8080` redirects to HTTPS)
    - Auth0 API: `http://localhost:8001`
    - SQL Query API: `http://localhost:8002`
 

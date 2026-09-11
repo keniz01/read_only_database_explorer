@@ -215,13 +215,20 @@ class PolicyEvaluator:
     def from_environment(cls) -> "PolicyEvaluator":
         import os
 
-        # Trigger CI rebuild
         raw = os.getenv("POLICY_POLICIES_JSON", "").strip()
+        config_file = os.getenv("POLICY_POLICIES_JSON_FILE", "").strip()
+        if not raw and config_file:
+            try:
+                with open(config_file, "r", encoding="utf-8") as handle:
+                    raw = handle.read().strip()
+            except FileNotFoundError:
+                raw = ""
         if not raw:
             # In production we require an explicit policy configuration; otherwise fall back to an empty evaluator.
             if os.getenv("ENVIRONMENT", "").lower() == "production" and not os.getenv("CI"):
                 raise RuntimeError(
-                    "Missing required POLICY_POLICIES_JSON environment variable for policy configuration."
+                    "Missing required POLICY_POLICIES_JSON environment variable or "
+                    "POLICY_POLICIES_JSON_FILE secret for policy configuration."
                 )
             # Non-production (e.g., CI, local dev) – disable policy enforcement.
             return cls(enabled=False)

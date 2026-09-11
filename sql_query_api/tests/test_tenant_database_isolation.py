@@ -99,6 +99,7 @@ def test_production_configuration_never_uses_legacy_database_url(monkeypatch: py
 
 def test_policy_configuration_is_required_only_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("POLICY_POLICIES_JSON", raising=False)
+    monkeypatch.delenv("POLICY_POLICIES_JSON_FILE", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("CI", raising=False)
 
@@ -107,6 +108,21 @@ def test_policy_configuration_is_required_only_in_production(monkeypatch: pytest
     monkeypatch.setenv("ENVIRONMENT", "production")
     with pytest.raises(RuntimeError, match="Missing required POLICY_POLICIES_JSON"):
         PolicyEvaluator.from_environment()
+
+
+def test_policy_configuration_loads_from_secret_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    policy_file = tmp_path / "policy_policies.json"
+    policy_file.write_text("[]")
+    monkeypatch.delenv("POLICY_POLICIES_JSON", raising=False)
+    monkeypatch.setenv("POLICY_POLICIES_JSON_FILE", str(policy_file))
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.delenv("CI", raising=False)
+
+    evaluator = PolicyEvaluator.from_environment()
+    assert evaluator.enabled is True
+    assert evaluator.policies == ()
 
 
 def test_replica_configuration_is_resolved_and_audited() -> None:
