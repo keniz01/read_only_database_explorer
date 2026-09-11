@@ -31,4 +31,5 @@ def observe_query(org_id: str, row_count: int, duration_seconds: float) -> None:
 
 
 def get_metrics_payload() -> bytes:
+    """Render the current Prometheus metrics registry as a text payload."""
     return generate_latest(METRICS_REGISTRY)

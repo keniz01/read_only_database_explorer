@@ -1,44 +1,42 @@
-"""
-Application factory for creating and configuring the FastAPI application.
-"""
+"""Application factory for creating and configuring the FastAPI application."""
 
-from fastapi import FastAPI, HTTPException
+import os
+from collections.abc import AsyncIterator, Awaitable, Callable
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from middlewares.logging_middleware import LoggingMiddleware
-from middlewares.correlation_middleware import correlation_id_middleware
-from middlewares.rate_limit_middleware import RateLimitMiddleware
-from middlewares.rbac_middleware import RBACMiddleware
+from strawberry.fastapi import GraphQLRouter
+
+from config.app_logger import configure_telemetry, logger
 from exceptions.exception_handlers import (
     http_exception_handler,
     validation_exception_handler,
 )
 from graphql_schema.schema import schema
-from strawberry.fastapi import GraphQLRouter
-from config.app_logger import logger, configure_telemetry
 from metrics import get_metrics_payload
-import os
-from typing import List
+from middlewares.correlation_middleware import correlation_id_middleware
+from middlewares.logging_middleware import LoggingMiddleware
+from middlewares.rate_limit_middleware import RateLimitMiddleware
+from middlewares.rbac_middleware import RBACMiddleware
 
 
-def setup_cors_middleware(app: FastAPI):
+def setup_cors_middleware(app: FastAPI) -> None:
     """
     Configure CORS middleware with allowed origins.
 
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance.
+
     """
-    # CORS Configuration - Restrict to configured origins
     cors_origins_env = os.getenv("CORS_ORIGINS", "")
     if cors_origins_env:
-        # Production: Load from environment
-        origins: List[str] = [origin.strip() for origin in cors_origins_env.split(",")]
+        origins: list[str] = [origin.strip() for origin in cors_origins_env.split(",")]
     else:
-        # Development: Default to localhost
         origins = [
-            "http://localhost:5173",  # Vite dev server
-            "http://localhost:3000",  # Alternative port
+            "http://localhost:5173",
+            "http://localhost:3000",
             "http://127.0.0.1:5173",
         ]
 
@@ -53,15 +51,19 @@ def setup_cors_middleware(app: FastAPI):
     )
 
 
-def setup_security_middleware(app: FastAPI):
+def setup_security_middleware(app: FastAPI) -> None:
     """
     Configure security headers middleware.
 
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance.
+
     """
+
     @app.middleware("http")
-    async def add_security_headers(request, call_next):
+    async def add_security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
@@ -70,12 +72,13 @@ def setup_security_middleware(app: FastAPI):
         return response
 
 
-def setup_custom_middlewares(app: FastAPI):
+def setup_custom_middlewares(app: FastAPI) -> None:
     """
-    Configure custom middlewares.
+    Add logging, correlation, rate-limit, and RBAC middlewares.
 
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance.
+
     """
     app.add_middleware(LoggingMiddleware)
     app.middleware("http")(correlation_id_middleware)
@@ -83,37 +86,39 @@ def setup_custom_middlewares(app: FastAPI):
     app.add_middleware(RBACMiddleware)
 
 
-def setup_exception_handlers(app: FastAPI):
+def setup_exception_handlers(app: FastAPI) -> None:
     """
-    Configure exception handlers.
+    Register application exception handlers.
 
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance.
+
     """
     app.add_exception_handler(HTTPException, http_exception_handler)
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
 
 
-def setup_routes(app: FastAPI):
+def setup_routes(app: FastAPI) -> None:
     """
-    Configure routes and routers.
+    Register the metrics and GraphQL routes.
 
     Args:
-        app: FastAPI application instance
+        app: FastAPI application instance.
+
     """
+
     @app.get("/metrics")
     async def metrics_endpoint() -> Response:
-        return Response(content=get_metrics_payload(), media_type="text/plain; version=0.7.0; charset=utf-8")
+        return Response(
+            content=get_metrics_payload(),
+            media_type="text/plain; version=0.7.0; charset=utf-8",
+        )
 
-    # GraphQL
-    graphql_router = GraphQLRouter(schema)
-    app.include_router(graphql_router, prefix="/graphql")
+    app.include_router(GraphQLRouter(schema), prefix="/graphql")
 
 
-async def lifespan(app: FastAPI):
-    """
-    Application lifespan events.
-    """
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Run startup and shutdown lifecycle hooks for the application."""
     logger.info("🚀 Starting FastAPI application...")
     yield
     logger.info("🛑 Shutting down FastAPI application...")
@@ -124,24 +129,19 @@ def create_app() -> FastAPI:
     Create and configure the FastAPI application.
 
     Returns:
-        Configured FastAPI application instance
+        Configured FastAPI application instance.
+
     """
-    # Create FastAPI app
     app = FastAPI(
         title="Secure Database Query API",
         version="1.0.0",
-        lifespan=lifespan
+        lifespan=lifespan,
     )
 
-    # Setup middlewares
     setup_cors_middleware(app)
     setup_security_middleware(app)
     setup_custom_middlewares(app)
-
-    # Setup exception handlers
     setup_exception_handlers(app)
-
-    # Setup routes
     setup_routes(app)
     configure_telemetry()
 

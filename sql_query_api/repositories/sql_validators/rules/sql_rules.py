@@ -6,8 +6,7 @@ from typing import Any, Protocol
 
 import sqlparse
 from sqlparse import tokens
-from sqlparse.sql import Statement, TokenList, Parenthesis
-from sqlparse.tokens import DML
+from sqlparse.sql import Statement, TokenList
 
 
 # ============================================================

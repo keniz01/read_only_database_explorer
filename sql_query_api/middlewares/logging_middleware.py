@@ -1,14 +1,20 @@
-from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi import Request, Response
-from uuid import uuid4
 import time
+from collections.abc import Awaitable, Callable
+from uuid import uuid4
+
+from fastapi import Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from config.app_logger import logger
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Logs all requests and responses with correlation ID."""
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        """Forward the request and emit structured logs with a correlation ID."""
         correlation_id = request.headers.get("X-Request-ID", str(uuid4()))
         start_time = time.time()
 

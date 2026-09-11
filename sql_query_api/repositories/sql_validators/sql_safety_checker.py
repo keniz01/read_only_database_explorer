@@ -7,20 +7,16 @@ import sqlparse
 from sqlparse import tokens as sql_tokens
 
 from repositories.sql_validators.ast_analyzer import AstSqlAnalyzer
+from repositories.sql_validators.rules.advanced_sql_rules import (
+    ForbiddenFunctionsRule,
+    ForbiddenTableRule,
+)
 from repositories.sql_validators.rules.sql_rules import (
     MustBeSelectRule,
     NoCommentRule,
     NoForbiddenKeywordsRule,
-    NoSubqueryRule,
-    NoUnionOrSetOpsRule,
-    NoWithCTERule,
     SingleStatementRule,
     SqlSafetyRule,
-)
-from repositories.sql_validators.rules.advanced_sql_rules import (
-    AllowedNodeTypesRule,
-    ForbiddenFunctionsRule,
-    ForbiddenTableRule,
 )
 from repositories.sql_validators.sql_cleaner import clean_sql
 
@@ -116,7 +112,7 @@ class DefaultSqlSafetyChecker:
             ),
         ]
 
-    def _extract_table_names(self, stmt) -> set[str]:
+    def _extract_table_names(self, stmt: sqlparse.sql.Statement) -> set[str]:
         tables: set[str] = set()
         in_from_clause = False
 
@@ -150,7 +146,7 @@ class DefaultSqlSafetyChecker:
 
         return tables
 
-    def _extract_selected_columns(self, stmt) -> dict[str, set[str]]:
+    def _extract_selected_columns(self, stmt: sqlparse.sql.Statement) -> dict[str, set[str]]:
         selected_columns: dict[str, set[str]] = defaultdict(set)
         in_select_clause = False
 
@@ -196,7 +192,7 @@ class DefaultSqlSafetyChecker:
 
         return selected_columns
 
-    def _enforces_allowlist(self, stmt, raw: str) -> bool:
+    def _enforces_allowlist(self, stmt: sqlparse.sql.Statement, raw: str) -> bool:
         if not self.table_allowlist and not self.column_allowlist:
             return True
 
@@ -228,7 +224,7 @@ class DefaultSqlSafetyChecker:
 
         return True
 
-    def _contains_forbidden_mutation(self, stmt) -> bool:
+    def _contains_forbidden_mutation(self, stmt: sqlparse.sql.Statement) -> bool:
         for token in stmt.flatten():
             if (
                 token.ttype in (sql_tokens.DDL, sql_tokens.DML, sql_tokens.Keyword, sql_tokens.Keyword.DCL)
@@ -303,7 +299,8 @@ class DefaultSqlSafetyChecker:
             Cleaned and validated SQL query string
 
         Raises:
-            ValueError: If SQL cannot be cleaned or fails validation
+            ValueError: If SQL cannot be cleaned or fails validation.
+
         """
         # Step 1: Clean the SQL (remove LLM artifacts)
         cleaned_sql = clean_sql(sql)

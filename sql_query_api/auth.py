@@ -3,13 +3,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import jwt
+from fastapi import Request
 from jwt import InvalidTokenError, PyJWKClient
 
 
 def read_secret_from_file(file_path: str) -> str:
     """Read secret from file, falling back to an empty string."""
     try:
-        with open(file_path, "r", encoding="utf-8") as handle:
+        with open(file_path, encoding="utf-8") as handle:
             return handle.read().strip()
     except FileNotFoundError:
         return ""
@@ -41,16 +42,18 @@ class Principal:
         return "admin" if "admin" in self.roles else "viewer"
 
     def __post_init__(self) -> None:
+        """Normalize the principal attributes mapping after initialization."""
         object.__setattr__(self, "attributes", dict(self.attributes or {}))
 
-    def __getattr__(self, name: str) -> Any:
+    def __getattr__(self, name: str) -> Any:  # noqa: ANN401 - dynamic fallback lookup for attributes
+        """Return a value from the principal attributes mapping for attribute access."""
         attributes = object.__getattribute__(self, "attributes")
         if name in attributes:
             return attributes[name]
         raise AttributeError(name)
 
 
-def extract_bearer_token(request) -> str | None:
+def extract_bearer_token(request: Request) -> str | None:
     """Extract a bearer token from the Authorization header."""
     header = request.headers.get("authorization")
     if not header:

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from repositories.abstract_sql_query_repository import ISqlQueryRepository
 from services.abstract_sql_query_service import ISqlQueryService
@@ -12,14 +12,13 @@ class SqlQueryService(ISqlQueryService):
     """
 
     def __init__(self, repository: ISqlQueryRepository) -> None:
-        """
-        Initialize the SqlQueryService with a repository (dependency injection).
-        """
+        """Initialize the SqlQueryService with a repository (dependency injection)."""
         self.repository = repository
 
     async def execute_sql_statement(
-        self, sql: str, params: Optional[Dict[str, Any]] = None
-    ) -> List[Dict[str, Any]]:
+        self, sql: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Execute the statement through the underlying repository and log the outcome."""
         try:
             result = await self.repository.execute_sql_statement(sql, params)
             logging.info("Service: SQL executed successfully.")
@@ -28,7 +27,8 @@ class SqlQueryService(ISqlQueryService):
             logging.error(f"Service: Error executing SQL: {e}")
             raise
 
-    async def get_table_schema(self, query_embeddings: List[float]) -> Dict[str, Any]:
+    async def get_table_schema(self, query_embeddings: list[float]) -> dict[str, Any]:
+        """Fetch the schema of a matched table through the underlying repository."""
         try:
             schema = await self.repository.get_table_schema(query_embeddings)
             logging.info("Service: Fetched database schema.")
@@ -37,7 +37,8 @@ class SqlQueryService(ISqlQueryService):
             logging.error(f"Service: Error fetching schema: {e}")
             raise
 
-    async def introspect_schema(self) -> Dict[str, Any]:
+    async def introspect_schema(self) -> dict[str, Any]:
+        """Dynamically introspect the database schema through the repository."""
         try:
             schema = await self.repository.introspect_schema()
             logging.info("Service: Introspected database schema successfully.")

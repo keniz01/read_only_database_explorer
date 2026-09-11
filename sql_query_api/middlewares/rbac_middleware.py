@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from auth import build_principal_from_claims, extract_bearer_token, validate_access_token
 
@@ -12,11 +13,11 @@ class RBACMiddleware:
     ALLOWED_ROLES = {"viewer", "admin"}
     SPOOFABLE_HEADER_PREFIXES = (b"x-user-", b"x-org-", b"x-tenant-")
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
 
     @classmethod
-    def _strip_spoofable_headers(cls, scope) -> None:
+    def _strip_spoofable_headers(cls, scope: Scope) -> None:
         """Remove caller identity metadata before any downstream handler can read it."""
         scope["headers"] = [
             (name, value)
@@ -24,7 +25,8 @@ class RBACMiddleware:
             if not name.lower().startswith(cls.SPOOFABLE_HEADER_PREFIXES)
         ]
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Authenticate and authorize GraphQL requests from trusted JWT claims."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return

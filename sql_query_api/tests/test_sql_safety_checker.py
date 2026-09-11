@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from auth import Principal
-from exceptions.sql_statement_execution_exception import SqlStatementExecutionException
+from exceptions.sql_statement_execution_exception import SqlStatementExecutionError
 from repositories.sql_query_repository import SqlQueryRepository
 from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
 from services.policy_engine import apply_row_restrictions, mask_rows
@@ -163,7 +163,11 @@ class TestSqlSafetyCheckerCleanAndValidate:
     def test_estimate_cost_low_and_high_queries(self) -> None:
         repo = SqlQueryRepository(engine=MagicMock(), sql_safety_checker=DefaultSqlSafetyChecker())
         assert repo.estimate_query_cost("SELECT id FROM artist LIMIT 10")["level"] == "low"
-        high_cost = repo.estimate_query_cost("SELECT * FROM artist a JOIN album b ON a.id = b.artist_id WHERE a.id IN (SELECT artist_id FROM album)")
+        high_cost_sql = (
+            "SELECT * FROM artist a JOIN album b ON a.id = b.artist_id "
+            "WHERE a.id IN (SELECT artist_id FROM album)"
+        )
+        high_cost = repo.estimate_query_cost(high_cost_sql)
         assert high_cost["level"] in {"high", "critical"}
 
     @pytest.mark.asyncio
@@ -206,7 +210,11 @@ class TestSqlSafetyCheckerCleanAndValidate:
 
     def test_mask_rows_masks_derived_aliases(self) -> None:
         rows = [{"customer_email": "alice@example.com", "name": "Alice"}]
-        masked = mask_rows(rows, frozenset({"email"}), "SELECT CONCAT(email, '@example.com') AS customer_email, name FROM users")
+        masked = mask_rows(
+            rows,
+            frozenset({"email"}),
+            "SELECT CONCAT(email, '@example.com') AS customer_email, name FROM users",
+        )
         assert masked[0]["customer_email"] is None
         assert masked[0]["name"] == "Alice"
 
@@ -231,7 +239,7 @@ class TestSqlQueryTimeout:
         conn = AsyncMock()
         conn.dialect.name = "sqlite"
 
-        async def timeout_execute(*args, **kwargs):
+        async def timeout_execute(*args: object, **kwargs: object) -> object:
             await asyncio.sleep(0.05)
             raise asyncio.TimeoutError()
 
@@ -244,5 +252,5 @@ class TestSqlQueryTimeout:
             query_timeout_seconds=0.01,
         )
 
-        with pytest.raises(SqlStatementExecutionException, match="timed out"):
+        with pytest.raises(SqlStatementExecutionError, match="timed out"):
             await repo.execute_sql_statement("SELECT 1")

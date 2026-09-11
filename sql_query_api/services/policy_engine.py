@@ -134,7 +134,6 @@ def _select_alias_map(sql: str) -> dict[str, set[str]]:
     select_clause = match.group(1)
     alias_map: dict[str, set[str]] = {}
     for item in _split_sql_list(select_clause):
-        lower_item = item.lower()
         alias_match = re.search(r"\bAS\s+([A-Za-z_][\w$]*)\s*$", item, re.IGNORECASE)
         alias = alias_match.group(1).lower() if alias_match else None
         expression = item if alias is None else item[: alias_match.start()].rstrip()
@@ -164,7 +163,8 @@ class Policy:
     row_scope: dict[str, str] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, value: dict[str, Any]) -> "Policy":
+    def from_dict(cls, value: dict[str, Any]) -> Policy:
+        """Build a policy from its raw configured representation."""
         return cls(
             id=str(value.get("id") or value.get("name") or "unnamed"),
             effect=str(value.get("effect", "allow")).lower(),
@@ -195,6 +195,7 @@ class PolicyDecision:
     masked_columns: frozenset[str] = frozenset()
 
     def as_dict(self) -> dict[str, Any]:
+        """Render the decision as a JSON-serializable mapping."""
         return {
             "allowed": self.allowed,
             "reason": self.reason,
@@ -212,14 +213,15 @@ class PolicyEvaluator:
         self.enabled = enabled
 
     @classmethod
-    def from_environment(cls) -> "PolicyEvaluator":
+    def from_environment(cls) -> PolicyEvaluator:
+        """Load policy configuration from the environment, failing fast in production."""
         import os
 
         raw = os.getenv("POLICY_POLICIES_JSON", "").strip()
         config_file = os.getenv("POLICY_POLICIES_JSON_FILE", "").strip()
         if not raw and config_file:
             try:
-                with open(config_file, "r", encoding="utf-8") as handle:
+                with open(config_file, encoding="utf-8") as handle:
                     raw = handle.read().strip()
             except FileNotFoundError:
                 raw = ""
@@ -258,6 +260,7 @@ class PolicyEvaluator:
         *,
         referenced_columns: set[str] | None = None,
     ) -> PolicyDecision:
+        """Evaluate a query against the configured policies with deny precedence."""
         if not self.enabled:
             return PolicyDecision(True, "Policy document not configured; legacy gateway controls apply.")
         if not tables:
@@ -293,7 +296,7 @@ class PolicyEvaluator:
         for policy in table_policies:
             row_restrictions.update(policy.row_scope)
             masked.update(policy.masked_columns)
-        for column, subject_attribute in row_restrictions.items():
+        for subject_attribute in row_restrictions.values():
             if subject_attribute not in principal.attributes or getattr(principal, subject_attribute, None) is None:
                 return PolicyDecision(False, f"Required subject attribute '{subject_attribute}' is absent.")
 
@@ -390,6 +393,7 @@ def apply_row_restrictions(sql: str, restrictions: dict[str, str], principal: Pr
 
 
 def mask_rows(rows: list[dict[str, Any]], columns: frozenset[str], sql: str | None = None) -> list[dict[str, Any]]:
+    """Return rows with the given columns substituted by null values."""
     if not columns:
         return rows
 

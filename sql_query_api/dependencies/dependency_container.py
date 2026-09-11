@@ -1,10 +1,17 @@
 import os
 import sys
+from collections.abc import Callable, Mapping
 from typing import Final
-from punq import Container
-from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
+
 from loguru import logger
+from punq import Container
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+
+from repositories.abstract_sql_query_repository import ISqlQueryRepository
+from repositories.sql_query_repository import SqlQueryRepository
+from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
+from services.abstract_sql_query_service import ISqlQueryService
+from services.sql_query_service import SqlQueryService
 
 
 def _parse_table_allowlist(raw_value: str) -> set[str]:
@@ -27,7 +34,9 @@ def _parse_sensitive_columns(raw_value: str) -> set[str]:
     return {value.strip().lower() for value in raw_value.split(",") if value.strip()}
 
 
-def _parse_row_filter(raw_value: str):
+def _parse_row_filter(
+    raw_value: str,
+) -> Callable[[Mapping[str, object]], bool] | None:
     if not raw_value.strip():
         return None
 
@@ -38,16 +47,10 @@ def _parse_row_filter(raw_value: str):
     if normalized_value.startswith("'") and normalized_value.endswith("'"):
         normalized_value = normalized_value[1:-1]
 
-    def row_filter(row):
+    def row_filter(row: Mapping[str, object]) -> bool:
         return row.get(column_name) == normalized_value
 
     return row_filter
-
-from repositories.sql_query_repository import SqlQueryRepository
-from repositories.abstract_sql_query_repository import ISqlQueryRepository
-from services.sql_query_service import SqlQueryService
-from services.abstract_sql_query_service import ISqlQueryService
-
 
 # -----------------------------------------------------------------------------
 # Logging Configuration
@@ -82,25 +85,32 @@ def setup_container(
     Set up the dependency injection container for the SQL Query system.
 
     Args:
-        connection_string (str): The database connection string.
+        connection_string: The database connection string.
+        data_schema: Schema containing the data tables to serve.
+        metadata_schema: Schema containing table metadata.
+        tenant_org_id: Optional org identifier to scope the engine.
+        tenant_database_id: Optional logical database identifier.
+        database_target: Which configured database target to use.
 
     Returns:
         Container: A configured punq dependency injection container.
+
     """
     logger.info("Starting setup of dependency injection container [MCP Server]...")
     container = Container()
 
     try:
-        if connection_string.startswith(("sqlite://", "sqlite+aiosqlite://")):
-            if ":memory:" not in connection_string and "mode=ro" not in connection_string:
-                prefix, path = connection_string.split("://", 1)
-                if not path.startswith("/file:"):
-                    connection_string = f"{prefix}:///file:/{path.lstrip('/')}"
-                connection_string = (
-                    f"{connection_string}&mode=ro&uri=true"
-                    if "?" in connection_string
-                    else f"{connection_string}?mode=ro&uri=true"
-                )
+        if connection_string.startswith(("sqlite://", "sqlite+aiosqlite://")) and (
+            ":memory:" not in connection_string and "mode=ro" not in connection_string
+        ):
+            prefix, path = connection_string.split("://", 1)
+            if not path.startswith("/file:"):
+                connection_string = f"{prefix}:///file:/{path.lstrip('/')}"
+            connection_string = (
+                f"{connection_string}&mode=ro&uri=true"
+                if "?" in connection_string
+                else f"{connection_string}?mode=ro&uri=true"
+            )
         # Create database engine
         logger.debug("Creating async SQLAlchemy engine...")
         engine_kwargs = {

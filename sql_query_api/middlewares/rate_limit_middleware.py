@@ -2,23 +2,24 @@ import asyncio
 import os
 import time
 from collections import defaultdict, deque
-from typing import Deque, DefaultDict
 
 from fastapi import Request
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 
 class RateLimitMiddleware:
     """Simple in-memory rate limiting for high-volume GraphQL requests."""
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         self.app = app
         self.window_seconds = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
         self.max_requests = int(os.getenv("RATE_LIMIT_MAX_REQUESTS", "120"))
-        self._requests: DefaultDict[str, Deque[float]] = defaultdict(deque)
+        self._requests: defaultdict[str, deque[float]] = defaultdict(deque)
         self._lock = asyncio.Lock()
 
-    async def __call__(self, scope, receive, send):
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Rate-limit GraphQL traffic per client IP before forwarding the request."""
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return

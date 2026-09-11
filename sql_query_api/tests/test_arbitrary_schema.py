@@ -4,18 +4,20 @@ arbitrary table/column names — no music-domain assumptions.
 
 Uses a completely different 'products/orders/customers' schema.
 """
-import pytest
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app_factory import create_app
-from routes import sql_query_controller
+from auth import Principal
 from repositories.sql_query_repository import SqlQueryRepository
-from services.sql_query_service import SqlQueryService
 from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
+from routes import sql_query_controller
+from services.sql_query_service import SqlQueryService
 from services.tenant_database_resolver import TenantDatabaseConfig
 
 
@@ -83,7 +85,9 @@ def override_service_with_products_db(
     repo = SqlQueryRepository(engine=products_engine, sql_safety_checker=checker)
     service = SqlQueryService(repository=repo)
     class TestProvider:
-        def resolve(self, principal, database_id):
+        def resolve(
+            self, principal: Principal, database_id: str | None
+        ) -> tuple[TenantDatabaseConfig, SqlQueryService]:
             return (
                 TenantDatabaseConfig(principal.org_id, database_id, "sqlite+aiosqlite:///:memory:"),
                 service,
@@ -94,8 +98,8 @@ def override_service_with_products_db(
 @pytest.fixture(autouse=True)
 def mock_valid_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     """Provide a valid Auth0 principal for GraphQL requests during tests."""
-    def fake_validate(token: str | None):
-        if token != "test-valid-token":
+    def fake_validate(token: str | None) -> dict[str, Any] | None:
+        if token != "test-valid-token":  # noqa: S105 - test-only bearer token comparison
             return None
         return {
             "sub": "auth0|user-123",
@@ -112,7 +116,7 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def auth_headers(**extra):
+def auth_headers(**extra: str) -> dict[str, str]:
     headers = {"Authorization": "Bearer test-valid-token"}
     headers.update(extra)
     return headers
@@ -130,7 +134,13 @@ class TestArbitraryTableQueries:
             executeSqlStatement(request: $req)
         }
         """
-        variables = {"req": {"sqlStatement": "SELECT customer_id, full_name, email FROM customers ORDER BY customer_id"}}
+        variables = {
+            "req": {
+                "sqlStatement": (
+                    "SELECT customer_id, full_name, email FROM customers ORDER BY customer_id"
+                )
+            }
+        }
         res = client.post("/graphql", json={"query": gql, "variables": variables}, headers=auth_headers()).json()
         assert "errors" not in res
         rows = res["data"]["executeSqlStatement"]
@@ -177,7 +187,14 @@ class TestArbitraryTableQueries:
             executeSqlStatement(request: $req)
         }
         """
-        variables = {"req": {"sqlStatement": "SELECT customer_id, SUM(quantity) FROM orders GROUP BY customer_id ORDER BY customer_id"}}
+        variables = {
+            "req": {
+                "sqlStatement": (
+                    "SELECT customer_id, SUM(quantity) FROM orders "
+                    "GROUP BY customer_id ORDER BY customer_id"
+                )
+            }
+        }
         res = client.post("/graphql", json={"query": gql, "variables": variables}, headers=auth_headers()).json()
         assert "errors" not in res
         rows = res["data"]["executeSqlStatement"]

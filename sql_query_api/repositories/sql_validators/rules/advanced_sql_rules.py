@@ -1,16 +1,19 @@
-"""Advanced SQL safety rules for production hardening.
+"""
+Advanced SQL safety rules for production hardening.
 
-These rules complement the existing simple keyword‑based checks by using
+These rules complement the existing simple keyword-based checks by using
 `sqlglot` to inspect the parsed abstract syntax tree (AST) of a query. They
 provide deterministic guarantees that only allowed constructs are present.
 """
 
 import sqlglot
+import sqlparse
 from sqlglot import exp
 
 
 class AllowedNodeTypesRule:
-    """Allow only a whitelist of sqlglot AST node types.
+    """
+    Allow only a whitelist of sqlglot AST node types.
 
     The rule parses the raw SQL with sqlglot (PostgreSQL dialect) and walks the
     expression tree. If any node class name is not present in ``allowed`` the
@@ -22,12 +25,14 @@ class AllowedNodeTypesRule:
         # Normalise to class names without the ``Expression`` suffix.
         self.allowed = {name.lower() for name in allowed}
 
-    def check(self, stmt, raw: str) -> bool:  # noqa: D401
-        """Return ``True`` if every AST node is in the allowed whitelist.
+    def check(self, stmt: sqlparse.sql.Statement, raw: str) -> bool:  # noqa: D401
+        """
+        Return True if every AST node is in the allowed whitelist.
 
         Args:
-            stmt: Ignored – we re‑parse ``raw`` with sqlglot for a reliable AST.
+            stmt: Ignored; the raw statement is re-parsed for a reliable AST.
             raw: The original query string.
+
         """
         try:
             parsed = sqlglot.parse_one(raw, read="postgres")
@@ -41,16 +46,18 @@ class AllowedNodeTypesRule:
 
 
 class ForbiddenFunctionsRule:
-    """Reject queries that reference disallowed functions.
+    """
+    Reject queries that reference disallowed functions.
 
     The rule looks for ``sqlglot.exp.Func`` nodes and checks the function
-    name against a user‑provided ``forbidden`` set (case‑insensitive).
+    name against a user-provided ``forbidden`` set (case-insensitive).
     """
 
     def __init__(self, forbidden: set[str]):
         self.forbidden = {name.lower() for name in forbidden}
 
-    def check(self, stmt, raw: str) -> bool:
+    def check(self, stmt: sqlparse.sql.Statement, raw: str) -> bool:
+        """Reject the statement when it references any forbidden function."""
         try:
             parsed = sqlglot.parse_one(raw, read="postgres")
         except Exception:
@@ -64,16 +71,18 @@ class ForbiddenFunctionsRule:
 
 
 class ForbiddenTableRule:
-    """Block reads from system/catalog tables unless explicitly allowed.
+    """
+    Block reads from system/catalog tables unless explicitly allowed.
 
     Any table name that starts with ``pg_`` or matches ``information_schema``
-    (or a sub‑schema thereof) causes the rule to reject.
+    (or a sub-schema thereof) causes the rule to reject.
     """
 
     def __init__(self, forbidden_prefixes: set[str] | None = None):
         self.forbidden_prefixes = {p.lower() for p in (forbidden_prefixes or {"pg_", "information_schema"})}
 
-    def check(self, stmt, raw: str) -> bool:
+    def check(self, stmt: sqlparse.sql.Statement, raw: str) -> bool:
+        """Reject the statement when it reads from any forbidden table."""
         try:
             parsed = sqlglot.parse_one(raw, read="postgres")
         except Exception:

@@ -1,4 +1,5 @@
-"""Server-side resolution of logical tenant databases.
+"""
+Server-side resolution of logical tenant databases.
 
 The GraphQL API only accepts an opaque logical database identifier.  Physical
 connection details are loaded from server configuration and are never derived
@@ -34,6 +35,7 @@ class TenantDatabaseConfig:
     use_read_replica: bool = False
 
     def __post_init__(self) -> None:
+        """Validate the server-owned database configuration invariants."""
         if (
             not isinstance(self.org_id, str)
             or not isinstance(self.database_id, str)
@@ -68,7 +70,8 @@ class TenantDatabaseConfig:
 
 
 class TenantDatabaseResolver:
-    """Resolve ``(validated principal organisation, logical database id)``.
+    """
+    Resolve ``(validated principal organisation, logical database id)``.
 
     Configuration is intentionally one-way: request data can select a logical
     identifier, but it can never provide or alter a connection string.
@@ -88,16 +91,17 @@ class TenantDatabaseResolver:
 
     @classmethod
     def is_valid_database_id(cls, database_id: str) -> bool:
+        """Return whether the value is a valid opaque logical database identifier."""
         return isinstance(database_id, str) and bool(cls._DATABASE_ID_PATTERN.fullmatch(database_id.strip()))
 
     @classmethod
-    def from_environment(cls) -> "TenantDatabaseResolver":
+    def from_environment(cls) -> TenantDatabaseResolver:
         """Load tenant mappings from JSON in an environment variable or secret file."""
         raw_config = os.getenv("TENANT_DATABASES_JSON", "").strip()
         config_file = os.getenv("TENANT_DATABASES_FILE", "").strip()
         if not raw_config and config_file:
             try:
-                with open(config_file, "r", encoding="utf-8") as handle:
+                with open(config_file, encoding="utf-8") as handle:
                     raw_config = handle.read().strip()
             except FileNotFoundError:
                 raw_config = ""
@@ -121,13 +125,13 @@ class TenantDatabaseResolver:
         if not file_path:
             return ""
         try:
-            with open(file_path, "r", encoding="utf-8") as handle:
+            with open(file_path, encoding="utf-8") as handle:
                 return handle.read().strip()
         except FileNotFoundError:
             return ""
 
     @classmethod
-    def _parse_bindings(cls, parsed: Any) -> list[TenantDatabaseConfig]:
+    def _parse_bindings(cls, parsed: object) -> list[TenantDatabaseConfig]:
         entries: list[dict[str, Any]] = []
         if isinstance(parsed, list):
             entries = [entry for entry in parsed if isinstance(entry, dict)]
@@ -201,7 +205,11 @@ class TenantDatabaseResolver:
                     connection_string=connection_string.strip(),
                     data_schema=str(entry.get("data_schema", os.getenv("SQL_DATA_SCHEMA", "public"))),
                     metadata_schema=str(entry.get("metadata_schema", os.getenv("SQL_METADATA_SCHEMA", "meta"))),
-                    replica_connection_string=replica_connection_string.strip() if isinstance(replica_connection_string, str) and replica_connection_string.strip() else None,
+                    replica_connection_string=(
+                        replica_connection_string.strip()
+                        if isinstance(replica_connection_string, str) and replica_connection_string.strip()
+                        else None
+                    ),
                     use_read_replica=bool(use_read_replica),
                 )
             )

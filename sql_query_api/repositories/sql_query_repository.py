@@ -3,33 +3,32 @@ import json
 import logging
 import os
 import re
+from collections.abc import AsyncGenerator, Callable, Iterable
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Callable, Dict, List, Optional, Iterable
+from typing import Any
+
 from sqlalchemy import TextClause, text
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.ext.asyncio.result import AsyncResult
 
-from repositories.abstract_sql_query_repository import ISqlQueryRepository
-from exceptions.forbidden_sql_statement_exception import ForbiddenSqlStatementException
-from exceptions.sql_statement_execution_exception import SqlStatementExecutionException
-
 from exceptions.exception_handlers import raise_sql_execution_exception
-from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker, SqlSafetyChecker
+from exceptions.forbidden_sql_statement_exception import ForbiddenSqlStatementError
+from exceptions.sql_statement_execution_exception import SqlStatementExecutionError
+from repositories.abstract_sql_query_repository import ISqlQueryRepository
+from repositories.sql_validators.sql_safety_checker import SqlSafetyChecker
 
 
 class SqlQueryRepository(ISqlQueryRepository):
-    """
-    Repository class for SQL queries.
-    """
+    """Repository that executes governed, read-only SQL against a database."""
 
     def __init__(
         self,
         engine: AsyncEngine,
         sql_safety_checker: SqlSafetyChecker,
-        query_timeout_seconds: Optional[float] = None,
-        sensitive_columns: Optional[set[str]] = None,
-        row_filter: Optional[Callable[[Dict[str, Any]], bool]] = None,
+        query_timeout_seconds: float | None = None,
+        sensitive_columns: set[str] | None = None,
+        row_filter: Callable[[dict[str, Any]], bool] | None = None,
         data_schema: str = "public",
         metadata_schema: str = "meta",
         tenant_org_id: str | None = None,
@@ -66,9 +65,9 @@ class SqlQueryRepository(ISqlQueryRepository):
 
     @property
     def database_target(self) -> str:
-        return self._database_target
+        """Return the database target used for requests."""
 
-    def estimate_query_cost(self, sql: str) -> Dict[str, Any]:
+    def estimate_query_cost(self, sql: str) -> dict[str, Any]:
         """Estimate a query's relative execution cost from a few static heuristics."""
         normalized = sql.strip()
         if not normalized:
@@ -123,7 +122,7 @@ class SqlQueryRepository(ISqlQueryRepository):
             "reason": ", ".join(reasons) if reasons else "basic select",
         }
 
-    def evaluate_query_cost(self, sql: str) -> Dict[str, Any]:
+    def evaluate_query_cost(self, sql: str) -> dict[str, Any]:
         """Return the estimated cost and the effective guardrail decision."""
         estimate = self.estimate_query_cost(sql)
         score = int(estimate.get("score", 0))
@@ -152,7 +151,7 @@ class SqlQueryRepository(ISqlQueryRepository):
             "message": "Query is within the configured cost budget.",
         }
 
-    async def explain_query_cost(self, sql: str) -> Dict[str, Any]:
+    async def explain_query_cost(self, sql: str) -> dict[str, Any]:
         """Run an EXPLAIN plan when the backend supports it and summarize the plan cost."""
         normalized_sql = self._ensure_limit(sql).strip()
         try:
@@ -170,7 +169,11 @@ class SqlQueryRepository(ISqlQueryRepository):
                 payload = rows[0][0] if rows and rows[0] and len(rows[0]) else []
                 if not payload:
                     return {"dialect": dialect_name, "supported": True, "total_cost": None, "plan": {}}
-                plan = payload[0].get("Plan", {}) if isinstance(payload, list) and payload and isinstance(payload[0], dict) else {}
+                plan = (
+                    payload[0].get("Plan", {})
+                    if isinstance(payload, list) and payload and isinstance(payload[0], dict)
+                    else {}
+                )
                 total_cost = plan.get("Total Cost")
                 return {
                     "dialect": dialect_name,
@@ -189,7 +192,8 @@ class SqlQueryRepository(ISqlQueryRepository):
             }
 
     @asynccontextmanager
-    async def get_conn(self, schema_name: Optional[str] = None) -> AsyncGenerator[AsyncConnection, None]:
+    async def get_conn(self, schema_name: str | None = None) -> AsyncGenerator[AsyncConnection, None]:
+        """Yield a read-only database connection, enforcing read-only driver flags."""
         try:
             conn: AsyncConnection = await self._engine.connect()
             try:
@@ -218,20 +222,20 @@ class SqlQueryRepository(ISqlQueryRepository):
             finally:
                 await conn.close()
         except Exception as e:
-            if isinstance(e, SqlStatementExecutionException):
+            if isinstance(e, SqlStatementExecutionError):
                 raise
             logging.error(f"Error connecting to database: {e}")
             raise_sql_execution_exception(
                 "Error connecting to database", e, include_traceback=True
             )
 
-    def _apply_sensitive_column_masking(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _apply_sensitive_column_masking(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not self._sensitive_columns:
             return rows
 
-        masked_rows: List[Dict[str, Any]] = []
+        masked_rows: list[dict[str, Any]] = []
         for row in rows:
-            masked_row: Dict[str, Any] = {}
+            masked_row: dict[str, Any] = {}
             for key, value in row.items():
                 normalized_key = str(key).lower()
                 if (
@@ -244,7 +248,7 @@ class SqlQueryRepository(ISqlQueryRepository):
             masked_rows.append(masked_row)
         return masked_rows
 
-    def _apply_row_filter(self, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _apply_row_filter(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not self._row_filter:
             return rows
         return [row for row in rows if self._row_filter(row)]
@@ -252,11 +256,12 @@ class SqlQueryRepository(ISqlQueryRepository):
     async def execute_sql_statement(
         self,
         sql: str,
-        params: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Validate, guard, and execute a read-only SELECT statement."""
         if not self._sql_safety_checker.is_safe_select_query(sql):
             logging.warning(f"Forbidden SQL statement attempted: {sql}")
-            raise ForbiddenSqlStatementException(
+            raise ForbiddenSqlStatementError(
                 "Only simple SELECT statements are allowed."
             )
 
@@ -272,7 +277,7 @@ class SqlQueryRepository(ISqlQueryRepository):
                 cost_guard["threshold"],
                 sql,
             )
-            raise ForbiddenSqlStatementException(
+            raise ForbiddenSqlStatementError(
                 "Query exceeds the configured cost threshold and is rejected."
             )
         if cost_guard["decision"] == "warn":
@@ -289,7 +294,7 @@ class SqlQueryRepository(ISqlQueryRepository):
 
         async with self.get_conn(self._data_schema) as conn:
             try:
-                async def _execute_query() -> List[Dict[str, Any]]:
+                async def _execute_query() -> list[dict[str, Any]]:
                     result: AsyncResult = await conn.execute(
                         text(sql),
                         parameters=params or {},
@@ -298,18 +303,18 @@ class SqlQueryRepository(ISqlQueryRepository):
                     if result.returns_rows:
                         rows: Iterable[Row[Any]] = result.fetchall()
                         if len(rows) > self._max_row_limit:
-                            raise SqlStatementExecutionException(
+                            raise SqlStatementExecutionError(
                                 f"Query result exceeds the maximum allowed row limit ({self._max_row_limit} rows)."
                             )
 
-                        result_dicts: List[Dict[str, Any]] = [
+                        result_dicts: list[dict[str, Any]] = [
                             dict(row._mapping) for row in rows
                         ]
 
                         # Check byte size
                         serialized_size = len(json.dumps(result_dicts, default=str).encode("utf-8"))
                         if serialized_size > self._max_result_bytes:
-                            raise SqlStatementExecutionException(
+                            raise SqlStatementExecutionError(
                                 f"Query result exceeds maximum allowed size ({self._max_result_bytes} bytes)."
                             )
 
@@ -332,19 +337,19 @@ class SqlQueryRepository(ISqlQueryRepository):
                         self._query_timeout_seconds,
                         sql,
                     )
-                    raise SqlStatementExecutionException(
+                    raise SqlStatementExecutionError(
                         f"SQL query timed out after {self._query_timeout_seconds} seconds."
                     ) from e
 
             except Exception as e:
-                if isinstance(e, SqlStatementExecutionException):
+                if isinstance(e, SqlStatementExecutionError):
                     raise
                 logging.error(f"Error executing SQL statement: {e}")
                 raise_sql_execution_exception(
                     "Error executing SQL statement", e, include_traceback=True
                 )
 
-    async def introspect_schema(self) -> Dict[str, Any]:
+    async def introspect_schema(self) -> dict[str, Any]:
         """
         Dynamically introspects the connected database schema.
         Reads information_schema (PostgreSQL) or sqlite_master / PRAGMA (SQLite).
@@ -358,11 +363,11 @@ class SqlQueryRepository(ISqlQueryRepository):
                     return await self._introspect_postgresql(conn)
         except Exception as e:
             logging.error(f"Error introspecting database schema: {e}", exc_info=True)
-            raise SqlStatementExecutionException(
+            raise SqlStatementExecutionError(
                 f"Error introspecting database schema: {type(e).__name__}: {e}"
             ) from e
 
-    async def _introspect_sqlite(self, conn: AsyncConnection) -> Dict[str, Any]:
+    async def _introspect_sqlite(self, conn: AsyncConnection) -> dict[str, Any]:
         tables_res = await conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
         )
@@ -384,8 +389,16 @@ class SqlQueryRepository(ISqlQueryRepository):
                 columns_list.append({
                     "name": str(col_dict.get("name", "")),
                     "type": str(col_dict.get("type", "TEXT")),
-                    "nullable": bool(col_dict.get("notnull", 0) == 0) if "notnull" in col_dict else bool(col_dict.get("nullable", True)),
-                    "is_primary": bool(col_dict.get("pk", 0) > 0) if "pk" in col_dict else bool(col_dict.get("is_primary", False)),
+                    "nullable": (
+                        bool(col_dict.get("notnull", 0) == 0)
+                        if "notnull" in col_dict
+                        else bool(col_dict.get("nullable", True))
+                    ),
+                    "is_primary": (
+                        bool(col_dict.get("pk", 0) > 0)
+                        if "pk" in col_dict
+                        else bool(col_dict.get("is_primary", False))
+                    ),
                 })
 
             fks_res = await conn.execute(text(f"PRAGMA foreign_key_list('{safe_table}')"))
@@ -413,10 +426,10 @@ class SqlQueryRepository(ISqlQueryRepository):
 
         return {"tables": tables_list}
 
-    async def _introspect_postgresql(self, conn: AsyncConnection) -> Dict[str, Any]:
+    async def _introspect_postgresql(self, conn: AsyncConnection) -> dict[str, Any]:
         tables_res = await conn.execute(text("""
-            SELECT table_schema, table_name 
-            FROM information_schema.tables 
+            SELECT table_schema, table_name
+            FROM information_schema.tables
             WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'meta')
               AND table_type = 'BASE TABLE'
             ORDER BY table_schema, table_name
@@ -494,10 +507,8 @@ class SqlQueryRepository(ISqlQueryRepository):
 
         return {"tables": tables_list}
 
-    async def get_table_schema(self, query_embeddings: List[float]) -> Dict[str, Any]:
-        """
-        Fetches the top 4 most similar database schema entries.
-        """
+    async def get_table_schema(self, query_embeddings: list[float]) -> dict[str, Any]:
+        """Fetch the top 4 most similar database schema entries."""
         query = self._build_similarity_query()
 
         try:
@@ -507,14 +518,14 @@ class SqlQueryRepository(ISqlQueryRepository):
                 result: AsyncResult = await conn.execute(
                     query, {"query_embeddings": embedding_str}
                 )
-                rows: List[Row[Any]] = result.fetchall()
+                rows: list[Row[Any]] = result.fetchall()
 
                 formatted = self._format_schema_rows(rows)
                 return {"schema": formatted}
 
         except Exception as e:
             logging.error("Schema embedding lookup failed; vectors must be regenerated: %s", e)
-            raise SqlStatementExecutionException(
+            raise SqlStatementExecutionError(
                 "Schema embeddings are unavailable or incompatible with the configured embedding dimensions. "
                 "Regenerate schema embeddings before using text-to-SQL."
             ) from e
@@ -530,22 +541,18 @@ class SqlQueryRepository(ISqlQueryRepository):
         )
 
     def _ensure_limit(self, sql: str) -> str:
-        """
-        Adds a default LIMIT 100 if the SQL query doesn't already have a LIMIT clause.
-        """
+        """Add a default LIMIT 100 if the SQL query doesn't already have a LIMIT clause."""
         # Case-insensitive check for LIMIT clause
         if re.search(r'\bLIMIT\s+\d+\b', sql, re.IGNORECASE):
             return sql
         return f"{sql.rstrip(';')} LIMIT 100"
 
     def _format_schema_rows(self, rows: Iterable[Row[Any]]) -> str:
-        """
-        Formats fetched rows into a readable schema string.
-        """
-        schema_lines: List[str] = []
+        """Format fetched rows into a readable schema string."""
+        schema_lines: list[str] = []
 
         for row in rows:
-            raw_json: Dict[str, Any] = row[0]
+            raw_json: dict[str, Any] = row[0]
             schema_lines.extend(self._format_single_schema(raw_json))
             schema_lines.append("")  # spacing
 
@@ -555,11 +562,9 @@ class SqlQueryRepository(ISqlQueryRepository):
         )
         return "\n".join(schema_lines)
 
-    def _format_single_schema(self, raw_json: Dict[str, Any]) -> List[str]:
-        """
-        Formats a single raw_json schema entry.
-        """
-        lines: List[str] = []
+    def _format_single_schema(self, raw_json: dict[str, Any]) -> list[str]:
+        """Format a single raw_json schema entry into readable lines."""
+        lines: list[str] = []
 
         for table_name, table_info in raw_json.items():
             lines.append(f"{table_name}:")

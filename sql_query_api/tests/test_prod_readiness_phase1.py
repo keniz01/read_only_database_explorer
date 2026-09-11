@@ -1,11 +1,11 @@
 """Tests for Production Readiness Phase 1: AST parsing, limits, audit sanitization, and DB constraints."""
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from auth import Principal
-from exceptions.sql_statement_execution_exception import SqlStatementExecutionException
+from exceptions.sql_statement_execution_exception import SqlStatementExecutionError
 from repositories.sql_query_repository import SqlQueryRepository
 from repositories.sql_validators.ast_analyzer import AstSqlAnalyzer
 from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
@@ -26,7 +26,10 @@ class TestAstSqlAnalyzer:
         assert analyzer.is_single_statement("SELECT 1; DROP TABLE users") is False
 
     def test_extract_tables_with_ctes(self, analyzer: AstSqlAnalyzer) -> None:
-        sql = "WITH regional_sales AS (SELECT * FROM sales WHERE region = 'west') SELECT * FROM regional_sales JOIN customers ON regional_sales.cust_id = customers.id"
+        sql = (
+            "WITH regional_sales AS (SELECT * FROM sales WHERE region = 'west') "
+            "SELECT * FROM regional_sales JOIN customers ON regional_sales.cust_id = customers.id"
+        )
         tables = analyzer.extract_tables(sql)
         # regional_sales is a CTE, so only real physical tables (sales, customers) must be returned
         assert "sales" in tables
@@ -115,7 +118,7 @@ class TestQueryResultResourceLimits:
         )
         repo._max_row_limit = 5
 
-        with pytest.raises(SqlStatementExecutionException, match="exceeds the maximum allowed row limit"):
+        with pytest.raises(SqlStatementExecutionError, match="exceeds the maximum allowed row limit"):
             await repo.execute_sql_statement("SELECT * FROM large_table")
 
     @pytest.mark.asyncio
@@ -139,5 +142,5 @@ class TestQueryResultResourceLimits:
         )
         repo._max_result_bytes = 500  # 500 bytes max
 
-        with pytest.raises(SqlStatementExecutionException, match="exceeds maximum allowed size"):
+        with pytest.raises(SqlStatementExecutionError, match="exceeds maximum allowed size"):
             await repo.execute_sql_statement("SELECT id, blob FROM large_blob_table")

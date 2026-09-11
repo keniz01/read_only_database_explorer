@@ -1,16 +1,17 @@
-import json
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from app_factory import create_app
-from routes import sql_query_controller
+from auth import Principal
 from repositories.sql_query_repository import SqlQueryRepository
-from services.sql_query_service import SqlQueryService
 from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker
+from routes import sql_query_controller
+from services.sql_query_service import SqlQueryService
 from services.tenant_database_resolver import TenantDatabaseConfig
 
 
@@ -18,7 +19,7 @@ from services.tenant_database_resolver import TenantDatabaseConfig
 async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     """Create an in-memory SQLite async engine and seed test tables."""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
-    
+
     async with engine.begin() as conn:
         await conn.execute(text("CREATE TABLE artist (id INT PRIMARY KEY, name TEXT, genre TEXT)"))
         await conn.execute(
@@ -30,7 +31,10 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
         )
         await conn.execute(text("CREATE TABLE track (id INT PRIMARY KEY, title TEXT)"))
         for i in range(1, 125):
-            await conn.execute(text(f"INSERT INTO track (id, title) VALUES ({i}, 'Track {i}')"))
+            await conn.execute(
+                text("INSERT INTO track (id, title) VALUES (:id, :title)"),
+                {"id": i, "title": f"Track {i}"},
+            )
 
     yield engine
     await engine.dispose()
@@ -43,7 +47,9 @@ def override_sql_service(test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPat
     test_repo = SqlQueryRepository(engine=test_engine, sql_safety_checker=safety_checker)
     test_service = SqlQueryService(repository=test_repo)
     class TestProvider:
-        def resolve(self, principal, database_id):
+        def resolve(
+            self, principal: Principal, database_id: str | None
+        ) -> tuple[TenantDatabaseConfig, SqlQueryService]:
             return (
                 TenantDatabaseConfig(principal.org_id, database_id, "sqlite+aiosqlite:///:memory:"),
                 test_service,
@@ -54,8 +60,8 @@ def override_sql_service(test_engine: AsyncEngine, monkeypatch: pytest.MonkeyPat
 @pytest.fixture(autouse=True)
 def mock_valid_auth(monkeypatch: pytest.MonkeyPatch) -> None:
     """Provide a valid Auth0 principal for requests that include a bearer token."""
-    def fake_validate(token: str | None):
-        if token != "test-valid-token":
+    def fake_validate(token: str | None) -> dict[str, Any] | None:
+        if token != "test-valid-token":  # noqa: S105 - test-only bearer token comparison
             return None
         return {
             "sub": "auth0|user-123",
@@ -73,7 +79,7 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def auth_headers(**extra):
+def auth_headers(**extra: str) -> dict[str, str]:
     headers = {"Authorization": "Bearer test-valid-token"}
     headers.update(extra)
     return headers
@@ -187,7 +193,7 @@ class TestGraphQLExecuteSqlStatement:
 
         captured = {}
 
-        def fake_log(event_type: str, **payload):
+        def fake_log(event_type: str, **payload: object) -> None:
             captured["event"] = event_type
             captured.update(payload)
 

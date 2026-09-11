@@ -9,7 +9,6 @@ This module handles cleaning of SQL queries that may contain:
 """
 
 import logging
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +25,7 @@ def clean_sql(sql: str) -> str:
 
     Raises:
         ValueError: If SQL cannot be cleaned or is invalid after cleaning
+
     """
     if not sql:
         raise ValueError("SQL query cannot be empty")

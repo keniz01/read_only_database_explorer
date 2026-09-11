@@ -6,19 +6,16 @@ Usage (pre-commit):
     entry: python .pre-commit-scripts/ruff-diff-check.py
 """
 
+import json
 import subprocess
 import sys
-import json
 
 
-def get_changed_lines(filename: str):
-    """
-    Return a set of changed line numbers for the given file
-    based on the git staged diff. Handles added or modified lines.
-    """
+def get_changed_lines(filename: str) -> set[int]:
+    """Return a set of changed line numbers for the given file based on the staged diff."""
     try:
-        diff = subprocess.check_output(
-            ["git", "diff", "--cached", "-U0", "--", filename],
+        diff = subprocess.check_output(  # noqa: S603 - filename is argv-controlled git input
+            ["git", "diff", "--cached", "-U0", "--", filename],  # noqa: S607 - git must come from PATH
             text=True,
         )
     except subprocess.CalledProcessError:
@@ -34,20 +31,18 @@ def get_changed_lines(filename: str):
                 start, length = int(start), int(length)
                 for i in range(start, start + length):
                     changed.add(i)
-            except Exception:
+            except Exception:  # noqa: S110 - best-effort hunk parsing; skip malformed headers
                 pass
 
     return changed
 
 
-def main(filenames):
-    """
-    Run Ruff on provided filenames and filter results to changed lines only.
-    """
+def main(filenames: list[str]) -> int:
+    """Run Ruff on provided filenames and filter results to changed lines only."""
     # Run Ruff and request JSON output for easy filtering
     try:
-        ruff_output = subprocess.check_output(
-            ["ruff", "check", "--output-format=json", "--force-exclude", *filenames],
+        ruff_output = subprocess.check_output(  # noqa: S603 - filenames are argv-controlled
+            ["ruff", "check", "--output-format=json", "--force-exclude", *filenames],  # noqa: S607 - ruff must come from PATH
             text=True,
         )
     except subprocess.CalledProcessError as e:
@@ -60,8 +55,8 @@ def main(filenames):
     try:
         problems = json.loads(ruff_output)
     except json.JSONDecodeError:
-        print("Error: Could not parse Ruff JSON output.")
-        print(ruff_output)
+        print("Error: Could not parse Ruff JSON output.")  # noqa: T201 - CLI output
+        print(ruff_output)  # noqa: T201 - CLI output
         return 1
 
     # Build map of changed lines per file
@@ -77,8 +72,8 @@ def main(filenames):
 
     # Output violations (if any)
     if violations:
-        print("Ruff found issues in changed lines only:")
-        print(json.dumps(violations, indent=2))
+        print("Ruff found issues in changed lines only:")  # noqa: T201 - CLI output
+        print(json.dumps(violations, indent=2))  # noqa: T201 - CLI output
         return 1
 
     return 0
