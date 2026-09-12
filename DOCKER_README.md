@@ -145,7 +145,7 @@ docker compose up --build
 
 The Docker setup creates a complete development environment with:
 
-- **Nginx reverse proxy / TLS edge** – Web app calls `https://localhost:8443/api` for auth; nginx terminates TLS and forwards to auth0_api
+- **Nginx reverse proxy / TLS edge** – serves the web app SPA and proxies `https://localhost:8443/api` for auth; nginx terminates TLS and forwards to web_app:5173 / auth0_api
 - Isolated PostgreSQL database
 - Backend APIs with proper networking
 - Frontend served with hot reload
@@ -155,5 +155,5 @@ The Docker setup creates a complete development environment with:
 ### Request flow (Auth API)
 
 ```
-Browser (localhost:5173) → nginx (localhost:8443/api, TLS) → auth0_api (internal:8001)
+Browser (localhost:8443, TLS) → nginx (proxies SPA to web_app:5173, /api to auth0_api) → auth0_api (internal:8001) → sql_query_api (internal:8002)
 ```
