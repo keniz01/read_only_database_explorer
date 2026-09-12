@@ -12,7 +12,7 @@
 # still runs and its report is printed, but the y/N gate is skipped.
 #
 # REVIEW_MODEL overrides the model used for the review. Default is the free,
-# fast muse-spark model (see .githooks for the benchmark); set e.g.
+# fast muse-spark model; set e.g.
 # REVIEW_MODEL=opencode/big-pickle to fall back to the stricter default.
 #
 # Toggle: BLOCK=false turns this into an advisory report that never blocks.
