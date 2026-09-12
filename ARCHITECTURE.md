@@ -132,9 +132,9 @@ API Request (Web App)
 ## Deployment Architecture
 
 ```
-localhost:5173      → Web App (Vite)
+localhost:5173      → Web App (Vite dev server; http://localhost:5173 only, proxied via the TLS edge)
 localhost:8080      → Nginx Gateway / Reverse Proxy (HTTP → HTTPS redirect)
-localhost:8443      → Nginx Gateway (TLS edge)
+localhost:8443      → Nginx Gateway (TLS edge; serves the web app SPA + /api/*)
 localhost:8001      → Auth0 API
 localhost:8002      → SQL Query API
 localhost:3000      → Grafana UI (otel-lgtm telemetry stack)

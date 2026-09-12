@@ -101,8 +101,8 @@ Model identifiers are loaded from `AI_MODEL_FILE` and `EMBEDDING_MODEL_FILE`.
 APP_SECRET_KEY=your-secret-key
 
 # Frontend Configuration
-REACT_APP_URL=http://localhost:5173
-FRONTEND_URL=http://localhost:5173/dashboard
+REACT_APP_URL=https://localhost:8443
+FRONTEND_URL=https://localhost:8443/dashboard
 
 # Optional
 AUTH_LOG_LEVEL=INFO

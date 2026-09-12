@@ -26,7 +26,7 @@ The Secure DB Access Gateway is a secure, full-stack application designed to saf
    ```bash
    docker compose up --build
    ```
-   - Web App: `http://localhost:5173`
+   - Web App: browse via the TLS edge at `https://localhost:8443` (Vite dev server on `http://localhost:5173` is proxied)
    - Nginx Gateway: `https://localhost:8443` (TLS; `http://localhost:8080` redirects to HTTPS)
    - Auth0 API: `http://localhost:8001`
    - SQL Query API: `http://localhost:8002`
