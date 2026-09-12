@@ -49,6 +49,8 @@ class Settings:
         "AUTH0_CLIENT_SECRET",
         required=_PRODUCTION,
     )
+    # AUTH0_AUDIENCE: keep the legacy AUTH0_API_AUDIENCE short-circuit so old
+    # deployments keep working; read_secret still covers AUTH0_AUDIENCE(_FILE).
     AUTH0_AUDIENCE: str = os.getenv("AUTH0_AUDIENCE") or os.getenv("AUTH0_API_AUDIENCE") or read_secret(
         "AUTH0_AUDIENCE",
         required=_PRODUCTION,

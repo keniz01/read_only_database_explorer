@@ -76,7 +76,7 @@ def read_secret(
     """
     value = os.getenv(name)
     if value:
-        return value
+        return value.strip()
 
     path = _source_file(name)
     if path:
