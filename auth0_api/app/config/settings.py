@@ -17,9 +17,11 @@ def read_secret_from_file(file_path: str) -> str:
 
     Comment lines (starting with ``#``) are skipped so scaffolded secret
     files can carry placeholder comments without corrupting the value.
+    A secret value whose own line begins with ``#`` is therefore treated
+    as a comment and dropped.
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             lines = [line for line in f if not line.lstrip().startswith('#')]
             return "".join(lines).strip()
     except FileNotFoundError:
