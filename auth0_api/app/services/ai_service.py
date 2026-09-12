@@ -54,6 +54,12 @@ class AIService:
         """
         for attempt in range(1, retries + 1):
             try:
+                extra_body: Optional[dict] = None
+                if settings.AI_DISABLE_REASONING:
+                    # OpenRouter plugin: disable reasoning where supported so the
+                    # model returns content (a clean answer) instead of a
+                    # chain-of-thought that pollutes the response.
+                    extra_body = {"reasoning": {"enabled": False}}
                 response = await self.client.chat.completions.create(
                     model=model,
                     messages=[
@@ -61,6 +67,7 @@ class AIService:
                         {"role": "user", "content": user.strip()},
                     ],
                     max_tokens=max_tokens,
+                    extra_body=extra_body,
                 )
 
                 choices = getattr(response, "choices", None)

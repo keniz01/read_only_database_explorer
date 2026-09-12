@@ -52,7 +52,7 @@ class SqlQueryRepository(ISqlQueryRepository):
             raise ValueError("SQL_QUERY_TIMEOUT_SECONDS must be greater than zero.")
         self._max_row_limit = int(os.getenv("SQL_QUERY_MAX_ROW_LIMIT", "5000"))
         self._max_result_bytes = int(os.getenv("SQL_QUERY_MAX_RESULT_BYTES", str(5 * 1024 * 1024)))  # 5MB
-        self._query_cost_threshold = float(os.getenv("SQL_QUERY_COST_THRESHOLD", "12"))
+        self._query_cost_threshold = float(os.getenv("SQL_QUERY_COST_THRESHOLD", "16"))
         self._query_cost_action = os.getenv("SQL_QUERY_COST_ACTION", "deny").strip().lower()
         if self._query_cost_action not in {"allow", "warn", "deny"}:
             self._query_cost_action = "deny"
@@ -100,7 +100,12 @@ class SqlQueryRepository(ISqlQueryRepository):
             score += 3
             reasons.append("CTE")
 
-        number_of_tables = max(1, len(re.findall(r"\bFROM\b|\bJOIN\b", upper_sql)))
+        # Count FROM/JOIN at the outermost level only: strip string literals
+        # and parenthesized blocks (subqueries) so correlated subqueries do not
+        # inflate the perceived number of table scans.
+        outer_sql = re.sub(r"(?:'[^']*'|\"[^\"]*\")", " ", upper_sql)
+        outer_sql = re.sub(r"\([^)]*\)", " ", outer_sql)
+        number_of_tables = max(1, len(re.findall(r"\bFROM\b|\bJOIN\b", outer_sql)))
         score += number_of_tables - 1
 
         if "SELECT COUNT" in upper_sql:

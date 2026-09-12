@@ -2,7 +2,7 @@
 Text-to-SQL service for converting natural language queries to SQL.
 """
 
-import json
+import re
 from typing import Dict, List, Optional, Any
 import httpx
 from app.config.settings import settings
@@ -141,38 +141,86 @@ class TextToSqlService:
         Generate SQL query from natural language using LLM.
         Uses a prompt format based on table-augmented generation best practices.
         System and user prompts are loaded from the file-based prompt registry.
+        A lightweight local pre-check validates the output and triggers one retry
+        with error feedback before the SQL is sent to the SQL Query API.
         """
         system_config = load_prompt("text_to_sql")
         user_config = load_prompt("text_to_sql/user")
         system_prompt = render_prompt(
             system_config, schema=schema, question=natural_language
         )
-        user_prompt = render_prompt(
-            user_config,
-            schema=schema,
-            natural_language=natural_language,
-        )
 
-        try:
-            sql = await self.ai_service.get_greeting(
-                system=system_prompt,
-                user=user_prompt,
-                max_tokens=500,  # SQL queries can be longer
+        last_feedback = ""
+        for attempt in range(1, 3):
+            user_prompt = render_prompt(
+                user_config,
+                schema=schema,
+                natural_language=natural_language,
             )
+            if last_feedback:
+                user_prompt = (
+                    f"{user_prompt}\n\nYour previous answer was rejected:\n"
+                    f"{last_feedback}\nReturn a single corrected SELECT statement only."
+                )
+
+            try:
+                sql = await self.ai_service.get_greeting(
+                    system=system_prompt,
+                    user=user_prompt,
+                    max_tokens=500,  # SQL queries can be longer
+                )
+            except Exception as e:
+                logger.error("Error generating SQL with LLM: %s", e)
+                raise AIServiceError(f"Failed to generate SQL: {str(e)}")
 
             if not sql:
                 raise AIServiceError("LLM returned empty SQL query")
 
-            # Log raw response for debugging
             logger.debug("Raw SQL response from LLM: %s", sql[:200])
 
-            # Return raw SQL - cleaning and validation will be handled by sql_query_api
-            logger.info("Generated SQL query (raw): %s", sql[:200])
-            return sql
+            ok, feedback = self._precheck_sql(sql)
+            if ok:
+                logger.info("Generated SQL query (raw): %s", sql[:200])
+                return sql
 
-        except Exception as e:
-            logger.error("Error generating SQL with LLM: %s", e)
-            raise AIServiceError(f"Failed to generate SQL: {str(e)}")
+            logger.warning("SQL pre-check failed (attempt %d): %s", attempt, feedback)
+            last_feedback = feedback
+
+        raise AIServiceError(f"Failed to generate valid SQL: {last_feedback}")
+
+    @staticmethod
+    def _precheck_sql(raw_sql: str) -> tuple[bool, str]:
+        """
+        Lightweight pre-check of LLM-generated SQL before it is sent to the
+        SQL Query API for full validation. Catches obvious formatting and
+        multi-statement problems so they can be retried cheaply.
+
+        Returns (ok, feedback): ok is True when the candidate looks plausible,
+        otherwise feedback describes the problem for the retry prompt.
+        """
+        sql = raw_sql.strip()
+        if sql.startswith("```"):
+            lines = [line for line in sql.split("\n") if not line.strip().startswith("```")]
+            sql = "\n".join(lines).strip()
+        if sql.upper().startswith("SQL:"):
+            sql = sql[4:].strip()
+        elif sql.upper().startswith("SQL "):
+            sql = sql[4:].strip()
+
+        if not sql.upper().startswith("SELECT"):
+            return False, "The SQL must start with SELECT; it started with something else."
+
+        # Multi-statement check: strip string literals before counting ';'
+        # so a semicolon inside a string does not cause a false positive.
+        no_strings = re.sub(r"'(?:[^']|'')*'", "''", sql)
+        no_strings = re.sub(r'"(?:[^"]|"")*"', '""', no_strings)
+        body = no_strings.rstrip()
+        if ";" in body[:-1]:
+            return False, (
+                "Multiple SQL statements detected. "
+                "Return exactly one SELECT statement that answers the whole question."
+            )
+        return True, ""
 
     async def _execute_sql(
         self,
