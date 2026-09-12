@@ -138,5 +138,5 @@ The Docker setup creates a complete development environment with:
 ### Request flow (Auth API)
 
 ```
-Browser (localhost:5173) → nginx (localhost:8443/api, TLS) → auth0_api (internal:8001)
+Browser (localhost:8443, TLS) → nginx (proxies SPA to web_app:5173, /api to auth0_api) → auth0_api (internal:8001) → sql_query_api (internal:8002)
 ```
