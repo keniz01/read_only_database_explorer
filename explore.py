@@ -23,12 +23,13 @@ if os.path.exists(venv_python) and sys.executable != venv_python:
 # Add sql_query_api to path to allow importing safety checker
 sys.path.append(os.path.join(current_dir, "sql_query_api"))
 try:
-    from auth import build_principal_from_claims, read_secret_from_file, validate_access_token  # noqa: E402
+    from auth import build_principal_from_claims, validate_access_token  # noqa: E402
     from dependencies.tenant_service_provider import TenantServiceProvider  # noqa: E402
     from repositories.sql_validators.sql_safety_checker import DefaultSqlSafetyChecker  # noqa: E402
     from services.query_gateway import GovernedQueryGateway, GovernedQueryRequest  # noqa: E402
     from services.policy_engine import PolicyEvaluator  # noqa: E402
     from services.tenant_database_resolver import TenantDatabaseConfig, TenantDatabaseResolver  # noqa: E402
+    from shared_secrets import read_secret  # noqa: E402
     HAS_SAFETY_CHECKER = True
 except ImportError:
     HAS_SAFETY_CHECKER = False
@@ -66,19 +67,7 @@ def resolve_database_url(db_arg: Optional[str] = None) -> str:
         else:
             url = db_arg
     else:
-        # Check env
-        url = os.getenv("DATABASE_URL") or ""
-        if not url:
-            db_file = os.getenv("DATABASE_URL_FILE")
-            if db_file and os.path.exists(db_file):
-                with open(db_file, "r") as f:
-                    url = f.read().strip()
-            else:
-                # Default to secrets/database_url.txt
-                default_secret = os.path.join(current_dir, "secrets", "database_url.txt")
-                if os.path.exists(default_secret):
-                    with open(default_secret, "r") as f:
-                        url = f.read().strip()
+        url = read_secret("DATABASE_URL")
 
     if not url:
         raise ValueError("Database connection URL could not be resolved. Please specify --db or set DATABASE_URL.")
@@ -107,11 +96,7 @@ async def execute_query(db_url: str, sql: str) -> List[Dict[str, Any]]:
     if db_url.startswith("sqlite://") and not db_url.startswith("sqlite+aiosqlite://"):
         db_url = db_url.replace("sqlite://", "sqlite+aiosqlite://", 1)
     database_id = os.getenv("CLI_DATABASE_ID", "default")
-    token = os.getenv("CLI_ACCESS_TOKEN", "").strip()
-    if not token:
-        token_file = os.getenv("CLI_ACCESS_TOKEN_FILE", "").strip()
-        if token_file:
-            token = read_secret_from_file(token_file)
+    token = read_secret("CLI_ACCESS_TOKEN")
     if not token:
         raise PermissionError(
             "A validated access token is required. Set CLI_ACCESS_TOKEN or CLI_ACCESS_TOKEN_FILE."
@@ -294,35 +279,20 @@ def get_all_ai_clients(cli_key: Optional[str] = None) -> List[Tuple[str, str, st
     clients = []
 
     # 1. Try Gemini Key
-    gemini_key = cli_key or os.getenv("GEMINI_API_KEY")
-    if not gemini_key:
-        secret_path = os.path.join(current_dir, "secrets", "gemini_api_key.txt")
-        if os.path.exists(secret_path):
-            with open(secret_path, "r") as f:
-                gemini_key = f.read().strip()
+    gemini_key = cli_key or read_secret("GEMINI_API_KEY")
 
     if gemini_key and gemini_key != "your-gemini-api-key" and len(gemini_key) > 5:
         # Use gemini-1.5-flash as default stable/fast model
         clients.append(("gemini", gemini_key, "gemini-1.5-flash"))
 
     # 2. Try OpenAI Key
-    openai_key = os.getenv("OPENAI_API_KEY")
-    if not openai_key:
-        secret_path = os.path.join(current_dir, "secrets", "openai_api_key.txt")
-        if os.path.exists(secret_path):
-            with open(secret_path, "r") as f:
-                openai_key = f.read().strip()
+    openai_key = read_secret("OPENAI_API_KEY")
 
     if openai_key and openai_key != "your-openai-api-key" and len(openai_key) > 5:
         clients.append(("openai", openai_key, "gpt-4o-mini"))
 
     # 3. Try Azure OpenAI GITHUB_TOKEN
-    github_token = os.getenv("GITHUB_TOKEN")
-    if not github_token:
-        secret_path = os.path.join(current_dir, "secrets", "github_token.txt")
-        if os.path.exists(secret_path):
-            with open(secret_path, "r") as f:
-                github_token = f.read().strip()
+    github_token = read_secret("GITHUB_TOKEN")
 
     if github_token and github_token != "your-github-token" and len(github_token) > 5:
         clients.append(("azure_openai", github_token, "gpt-4o-mini"))
@@ -642,9 +612,10 @@ async def main():
         # If no CLI actions specified, prompt user and show simple usage instructions
         print("--- Secure DB Access Gateway CLI ---")
         print("Usage:")
-        print("  Query a table:  python explore.py --db secrets/database_url.txt --table customers --format json --limit 10")
-        print("  Run custom SQL: python explore.py --db secrets/database_url.txt --sql \"SELECT * FROM orders\" --format csv")
-        print("  Generate Wiki:  python explore.py --db secrets/database_url.txt --generate-wiki docs/wiki")
+        print("  Query a table:  python explore.py --db postgresql+asyncpg://user:pass@host/db --table customers --format json --limit 10")
+        print("  Run custom SQL: python explore.py --db postgresql+asyncpg://user:pass@host/db --sql \"SELECT * FROM orders\" --format csv")
+        print("  Generate Wiki:  python explore.py --db postgresql+asyncpg://user:pass@host/db --generate-wiki docs/wiki")
+        print("  (Set DATABASE_URL in your environment to skip --db.)")
         print("  Analyze Log:    cat my_log.log | python explore.py --analyze")
         sys.exit(0)
 

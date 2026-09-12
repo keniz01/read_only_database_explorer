@@ -39,7 +39,7 @@ Run checks from inside the service dir with its venv (e.g. `sql_query_api/.venv/
 - `ENVIRONMENT` defaults to `production` in `sql_query_api/main.py`. In production (and not `CI`), startup fails fast if `POLICY_POLICIES_JSON` or `POLICY_POLICIES_JSON_FILE` is missing (`services/policy_engine.py`). For local dev runs set `ENVIRONMENT=dev` (also enables uvicorn reload).
 - `TENANT_DATABASES_JSON` or `TENANT_DATABASES_FILE` is required — there is no single-database fallback. It maps `org_id`/`database_id` → connection strings; clients send only a logical `database_id`, never connection strings.
 - Every token must carry the trusted tenant claim `https://app.secure-db-access-gateway.org/tenant_id`; RBAC middleware enforces it.
-- Secrets come only from env vars or `*_FILE` Docker-secret paths (`secrets/`, scaffolded by `setup-secrets.sh`, is gitignored). Never hardcode credentials.
+- Secrets come only from env vars (or a `*_FILE` path injected by an orchestrator). Real values live in a single gitignored env file — `.env` for dev (copied from `.env.example` by `scripts/bootstrap-dev.sh`), `/etc/gateway/gateway.env` on a host (manual provisioning) — and are read via the shared `read_secret` loader. There is no `secrets/` directory and no encrypted secret files. Never hardcode credentials.
 
 ## Don't regress these design constraints
 

@@ -11,7 +11,7 @@ Turn the uncommitted work in this repo into a clean, reviewable PR and land it o
 1. **Preconditions**
    - Verify `gh auth status` shows a logged-in account and `git remote get-url origin` exists. Refuse if either is missing.
    - Verify there are uncommitted changes (`git status --porcelain` non-empty). Refuse with a hint if the tree is clean.
-   - Never commit files: nothing under `secrets/` (gitignored), nothing that looks like a credential.
+   - Never commit files: `.env` / `gateway.env` (gitignored real secrets), anything under `certs/` or a legacy `secrets/`, nothing that looks like a credential.
 
 2. **Fetch and branch off main**
    - `git fetch origin main` (use a generous timeout if the network is slow).

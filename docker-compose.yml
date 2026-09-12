@@ -4,13 +4,9 @@ services:
     ports:
       - "8080:80"
       - "8443:443"
-    secrets:
-      - source: web_tls_cert
-        target: /etc/nginx/certs/web_tls_cert.pem
-      - source: web_tls_key
-        target: /etc/nginx/certs/web_tls_key.pem
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
     depends_on:
       - auth0_api
       - sql_query_api
@@ -28,44 +24,16 @@ services:
     restart: unless-stopped
 
   auth0_api:
-    build: ./auth0_api
-    secrets:
-      - secret_key
-      - session_secret_key
-      - google_client_id
-      - google_client_secret
-      - gemini_api_key
-      - openai_api_key
-      - openrouter_api_key
-      - ai_model
-      - embedding_model
-      - auth0_client_id
-      - auth0_client_secret
-      - auth0_domain
-      - frontend_url
-      - react_app_url
+    build:
+      context: .
+      dockerfile: auth0_api/Dockerfile
+    env_file: ${GATEWAY_ENV_FILE:-.env}
     environment:
-      ENVIRONMENT: production
-      SECRET_KEY_FILE: /run/secrets/secret_key
-      SESSION_SECRET_KEY_FILE: /run/secrets/session_secret_key
-      GOOGLE_CLIENT_ID_FILE: /run/secrets/google_client_id
-      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
-      GEMINI_API_KEY_FILE: /run/secrets/gemini_api_key
-      OPENAI_API_KEY_FILE: /run/secrets/openai_api_key
-      OPENROUTER_API_KEY_FILE: /run/secrets/openrouter_api_key
-      AI_MODEL_FILE: /run/secrets/ai_model
-      EMBEDDING_MODEL_FILE: /run/secrets/embedding_model
       AI_BASE_URL: ${AI_BASE_URL:-https://openrouter.ai/api/v1}
       AI_DISABLE_REASONING: ${AI_DISABLE_REASONING:-true}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
-      AUTH0_CLIENT_ID_FILE: /run/secrets/auth0_client_id
-      AUTH0_CLIENT_SECRET_FILE: /run/secrets/auth0_client_secret
-      AUTH0_DOMAIN_FILE: /run/secrets/auth0_domain
-      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://secure-db-access-gateway-api}
-      FRONTEND_URL_FILE: /run/secrets/frontend_url
-      REACT_APP_URL_FILE: /run/secrets/react_app_url
       SQL_QUERY_API_URL: http://sql_query_api:8002/graphql
-      CORS_ORIGINS: http://localhost:5173,https://localhost:5173,https://localhost:8443,http://web-app:5173
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,https://localhost:5173,https://localhost:8443,http://web-app:5173}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: auth0-api
     depends_on:
@@ -73,20 +41,14 @@ services:
       - otel-lgtm
 
   sql_query_api:
-    build: ./sql_query_api
-    secrets:
-      - auth0_domain
-      - tenant_databases
-      - policy_policies
+    build:
+      context: .
+      dockerfile: sql_query_api/Dockerfile
+    env_file: ${GATEWAY_ENV_FILE:-.env}
     environment:
-      TENANT_DATABASES_FILE: /run/secrets/tenant_databases
-      POLICY_POLICIES_JSON_FILE: /run/secrets/policy_policies
-      ENVIRONMENT: production
-      AUTH0_DOMAIN_FILE: /run/secrets/auth0_domain
-      AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://secure-db-access-gateway-api}
       SQL_DATA_SCHEMA: ${SQL_DATA_SCHEMA:-music}
       SQL_QUERY_COST_THRESHOLD: ${SQL_QUERY_COST_THRESHOLD:-16}
-      CORS_ORIGINS: http://localhost:5173,https://localhost:5173,https://localhost:8443
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,https://localhost:5173,https://localhost:8443}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: sql-query-api
     depends_on:
@@ -109,42 +71,7 @@ services:
 # volumes:
 #   postgres_data:
 
-secrets:
-  secret_key:
-    file: ./secrets/secret_key.txt
-  session_secret_key:
-    file: ./secrets/session_secret_key.txt
-  google_client_id:
-    file: ./secrets/google_client_id.txt
-  google_client_secret:
-    file: ./secrets/google_client_secret.txt
-  gemini_api_key:
-    file: ./secrets/gemini_api_key.txt
-  openai_api_key:
-    file: ./secrets/openai_api_key.txt
-  openrouter_api_key:
-    file: ./secrets/openrouter_api_key.txt
-  ai_model:
-    file: ./secrets/ai_model.txt
-  embedding_model:
-    file: ./secrets/embedding_model.txt
-  auth0_client_id:
-    file: ./secrets/auth0_client_id.txt
-  auth0_client_secret:
-    file: ./secrets/auth0_client_secret.txt
-  auth0_domain:
-    file: ./secrets/auth0_domain.txt
-  frontend_url:
-    file: ./secrets/frontend_url.txt
-  react_app_url:
-    file: ./secrets/react_app_url.txt
-  database_url:
-    file: ./secrets/database_url.txt
-  tenant_databases:
-    file: ./secrets/tenant_databases.json
-  policy_policies:
-    file: ./secrets/policy_policies.json
-  web_tls_cert:
-    file: ./secrets/web_tls_cert.pem
-  web_tls_key:
-    file: ./secrets/web_tls_key.pem
+# Secrets are injected as environment variables from a single env file
+# (GATEWAY_ENV_FILE, default .env) that never enters version control. There are
+# no secret files in this repository. Copy .env.example to .env (dev) or to
+# /etc/gateway/gateway.env (production) and fill in real values manually.

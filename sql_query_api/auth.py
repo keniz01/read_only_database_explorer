@@ -5,23 +5,18 @@ from typing import Any
 import jwt
 from fastapi import Request
 from jwt import InvalidTokenError, PyJWKClient
+from shared_secrets import is_environment_production, read_secret
 
+_REQUIRED_AUTH_SECRETS = is_environment_production()
+_LEGACY_API_AUDIENCE = os.getenv("AUTH0_API_AUDIENCE", "")
 
-def read_secret_from_file(file_path: str) -> str:
-    """Read secret from file, falling back to an empty string."""
-    try:
-        with open(file_path, encoding="utf-8") as handle:
-            return handle.read().strip()
-    except FileNotFoundError:
-        return ""
-
-
-AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN") or read_secret_from_file(os.getenv("AUTH0_DOMAIN_FILE", ""))
-AUTH0_AUDIENCE = (
-    os.getenv("AUTH0_AUDIENCE")
-    or os.getenv("AUTH0_API_AUDIENCE")
-    or read_secret_from_file(os.getenv("AUTH0_AUDIENCE_FILE", ""))
+AUTH0_DOMAIN = read_secret("AUTH0_DOMAIN", required=_REQUIRED_AUTH_SECRETS)
+AUTH0_AUDIENCE = read_secret(
+    "AUTH0_AUDIENCE",
+    required=_REQUIRED_AUTH_SECRETS and not _LEGACY_API_AUDIENCE,
 )
+if not AUTH0_AUDIENCE:
+    AUTH0_AUDIENCE = _LEGACY_API_AUDIENCE
 AUTH0_ISSUER = os.getenv("AUTH0_ISSUER") or (f"https://{AUTH0_DOMAIN}/" if AUTH0_DOMAIN else "")
 TENANT_ID_CLAIM = "https://app.secure-db-access-gateway.org/tenant_id"
 

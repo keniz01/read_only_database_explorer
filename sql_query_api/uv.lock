@@ -774,6 +774,11 @@ wheels = [
 ]
 
 [[package]]
+name = "shared-secrets"
+version = "0.1.0"
+source = { directory = "../shared" }
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -813,6 +818,7 @@ dependencies = [
     { name = "prometheus-client" },
     { name = "punq" },
     { name = "pyjwt" },
+    { name = "shared-secrets" },
     { name = "sqlalchemy" },
     { name = "sqlglot" },
     { name = "sqlparse" },
@@ -841,6 +847,7 @@ requires-dist = [
     { name = "prometheus-client", specifier = ">=0.22.1" },
     { name = "punq", specifier = ">=0.7.0" },
     { name = "pyjwt", specifier = ">=2.10.1" },
+    { name = "shared-secrets", directory = "../shared" },
     { name = "sqlalchemy", specifier = ">=2.0.44" },
     { name = "sqlglot", specifier = ">=30.0.0,<31" },
     { name = "sqlparse", specifier = ">=0.5.3" },

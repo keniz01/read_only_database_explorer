@@ -20,9 +20,13 @@ dependencies = [
     "python-dotenv>=1.2.1",
     "python-jose>=3.5.0",
     "requests>=2.32.5",
+    "shared-secrets",
     "starlette>=0.50.0",
     "uvicorn>=0.38.0",
 ]
+
+[tool.uv.sources]
+shared-secrets = { path = "../shared" }
 
 [dependency-groups]
 dev = [
