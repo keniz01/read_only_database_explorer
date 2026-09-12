@@ -11,6 +11,10 @@
 # commit is allowed. In non-interactive contexts (CI, piped stdin) the review
 # still runs and its report is printed, but the y/N gate is skipped.
 #
+# REVIEW_MODEL overrides the model used for the review. Default is the free,
+# fast muse-spark model; set e.g.
+# REVIEW_MODEL=opencode/big-pickle to fall back to the stricter default.
+#
 # Toggle: BLOCK=false turns this into an advisory report that never blocks.
 # Uninstall: rm .git/hooks/pre-commit
 # ─────────────────────────────────────────────────────────────
@@ -34,7 +38,7 @@ echo "╚═══════════════════════�
 echo ""
 echo "Reviewing staged changes with opencode..."
 
-if ! REVIEW_OUTPUT=$("$OPENCODE_BIN" run --command code-review 2>&1); then
+if ! REVIEW_OUTPUT=$("$OPENCODE_BIN" run --command code-review -m "${REVIEW_MODEL:-opencode/muse-spark-1.2-contributor-free}" 2>&1); then
   REVIEW_EXIT=$?
   echo "⚠️  opencode review failed (exit $REVIEW_EXIT). Skipping automated review; manual gate still applies when run interactively."
   REVIEW_OUTPUT=""

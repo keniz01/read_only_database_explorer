@@ -26,10 +26,11 @@ Run checks from inside the service dir with its venv (e.g. `sql_query_api/.venv/
 
 - A blocking pre-commit hook runs an opencode code-review before every commit
   (source: `.githooks/pre-commit`, installed to `.git/hooks/pre-commit`).
-  It runs `opencode run --command code-review` (skill: `.opencode/skills/code-review/`,
-  read-only agent: `.opencode/agent/code-reviewer.md`) against the staged diff and
-  requires a y/N approval when run interactively; in non-interactive contexts the
-  review runs, its report is printed, and the commit proceeds.
+  It runs `opencode run --command code-review -m ${REVIEW_MODEL:-opencode/muse-spark-1.2-contributor-free}`
+  (skill: `.opencode/skills/code-review/`, read-only agent: `.opencode/agent/code-reviewer.md`)
+  against the staged diff and requires a y/N approval when run interactively;
+  in non-interactive contexts the review runs, its report is printed, and the
+  commit proceeds. Override the review model with `REVIEW_MODEL=` (e.g. `opencode/big-pickle`).
 - Toggle to advisory with `BLOCK=false` in `.githooks/pre-commit`; uninstall with
   `rm .git/hooks/pre-commit`.
 
