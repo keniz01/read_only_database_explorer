@@ -170,6 +170,21 @@ class TestSqlSafetyCheckerCleanAndValidate:
         high_cost = repo.estimate_query_cost(high_cost_sql)
         assert high_cost["level"] in {"high", "critical"}
 
+    def test_estimate_cost_ignores_subquery_table_refs(self) -> None:
+        repo = SqlQueryRepository(engine=MagicMock(), sql_safety_checker=DefaultSqlSafetyChecker())
+        simple_join = (
+            "SELECT ar.artist_name FROM artist ar "
+            "JOIN album al ON al.artist_id = ar.artist_id"
+        )
+        with_subquery = (
+            "SELECT ar.artist_name, "
+            "(SELECT a2.title FROM album a2 WHERE a2.artist_id = ar.artist_id) "
+            "FROM artist ar JOIN album al ON al.artist_id = ar.artist_id"
+        )
+        simple_score = repo.estimate_query_cost(simple_join)["score"]
+        subquery_score = repo.estimate_query_cost(with_subquery)["score"]
+        assert subquery_score == simple_score
+
     @pytest.mark.asyncio
     async def test_row_filter_reduces_results(self) -> None:
         engine = MagicMock()

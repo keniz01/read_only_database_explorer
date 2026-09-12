@@ -1,5 +1,6 @@
 import pytest
 from app.services.ai_service import AIService
+from app.config.settings import settings
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.exceptions.handlers import AIServiceError
 
@@ -18,6 +19,19 @@ async def test_get_greeting_success(ai_service):
     result = await ai_service.get_greeting("system prompt", "user prompt")
     assert result == "Hello there!"
     ai_service.client.chat.completions.create.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_get_greeting_passes_reasoning_disabled(ai_service, monkeypatch):
+    """Reasoning is disabled via the OpenRouter extra_body plugin by default."""
+    monkeypatch.setattr(settings, "AI_DISABLE_REASONING", True)
+    mock_response = MagicMock()
+    mock_response.choices = [MagicMock(message=MagicMock(content="SELECT 1"))]
+    ai_service.client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+    await ai_service.get_greeting("system", "user")
+
+    _, kwargs = ai_service.client.chat.completions.create.call_args
+    assert kwargs.get("extra_body") == {"reasoning": {"enabled": False}}
 
 @pytest.mark.asyncio
 async def test_get_greeting_empty_response(ai_service):

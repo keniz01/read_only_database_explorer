@@ -80,6 +80,88 @@ async def test_generate_sql_http_error(text_to_sql_service, mock_ai_service):
     """Test SQL generation when HTTP request fails."""
     with patch("httpx.AsyncClient.post", side_effect=httpx.HTTPError("Connection failed")):
         result = await text_to_sql_service.generate_sql_from_text("test query")
-        
+
         assert "error" in result
         assert "Connection failed" in result["error"]
+
+
+def test_precheck_sql_accepts_single_select():
+    ok, feedback = TextToSqlService._precheck_sql("SELECT * FROM users")
+    assert ok is True
+    assert feedback == ""
+
+
+def test_precheck_sql_accepts_trailing_semicolon():
+    ok, _ = TextToSqlService._precheck_sql("SELECT * FROM users;")
+    assert ok is True
+
+
+def test_precheck_sql_accepts_semicolon_inside_string():
+    ok, _ = TextToSqlService._precheck_sql("SELECT title FROM album WHERE title ILIKE 'Get; Up'")
+    assert ok is True
+
+
+def test_precheck_sql_rejects_multi_statement():
+    ok, feedback = TextToSqlService._precheck_sql(
+        "SELECT COUNT(*) FROM artist; SELECT title FROM album;"
+    )
+    assert ok is False
+    assert "Multiple SQL statements" in feedback
+
+
+def test_precheck_sql_strips_markdown_and_prefix():
+    ok, _ = TextToSqlService._precheck_sql("```sql\nSELECT * FROM users\n```")
+    assert ok is True
+    ok, _ = TextToSqlService._precheck_sql("SQL: SELECT * FROM users")
+    assert ok is True
+
+
+def test_precheck_sql_rejects_non_select():
+    ok, feedback = TextToSqlService._precheck_sql("DELETE FROM users")
+    assert ok is False
+    assert "SELECT" in feedback
+
+
+@pytest.mark.asyncio
+async def test_generate_sql_retries_on_multi_statement(text_to_sql_service, mock_ai_service):
+    """Multi-statement output triggers a retry that produces a valid SELECT."""
+    mock_schema = "TABLE schema"
+    mock_gql_response = MagicMock()
+    mock_gql_response.status_code = 200
+    mock_gql_response.json.return_value = {"data": {"getTableSchema": {"schema": mock_schema}}}
+    mock_gql_response.raise_for_status = MagicMock()
+
+    mock_ai_service.get_greeting.side_effect = [
+        "SELECT COUNT(*) FROM artist; SELECT title FROM album;",
+        "SELECT (SELECT COUNT(*) FROM artist) AS count, (SELECT title FROM album LIMIT 1) AS title;",
+    ]
+
+    with patch("httpx.AsyncClient.post", return_value=mock_gql_response):
+        result = await text_to_sql_service.generate_sql_from_text("multi part query")
+
+    assert result["sql"] == (
+        "SELECT (SELECT COUNT(*) FROM artist) AS count, (SELECT title FROM album LIMIT 1) AS title;"
+    )
+    assert mock_ai_service.get_greeting.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_sql_retry_exhausted_returns_error(text_to_sql_service, mock_ai_service):
+    """Persistently invalid output surfaces the pre-check feedback as an error."""
+    mock_schema = "TABLE schema"
+    mock_gql_response = MagicMock()
+    mock_gql_response.status_code = 200
+    mock_gql_response.json.return_value = {"data": {"getTableSchema": {"schema": mock_schema}}}
+    mock_gql_response.raise_for_status = MagicMock()
+
+    mock_ai_service.get_greeting.side_effect = [
+        "SELECT COUNT(*) FROM artist; SELECT title FROM album;",
+        "SELECT COUNT(*) FROM artist; SELECT title FROM album;",
+    ]
+
+    with patch("httpx.AsyncClient.post", return_value=mock_gql_response):
+        result = await text_to_sql_service.generate_sql_from_text("multi part query")
+
+    assert "error" in result
+    assert "Multiple SQL statements" in result["error"]
+    assert mock_ai_service.get_greeting.call_count == 2

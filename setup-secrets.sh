@@ -106,8 +106,19 @@ cat > secrets/tenant_databases.json << 'EOF'
 ]
 EOF
 
+# Default-deny starter policy: one allow rule per table so governed queries
+# work with a fresh scaffold. Restrict further via columns/row_scope per
+# sql_query_api/README.md "Policy enforcement".
 cat > secrets/policy_policies.json << 'EOF'
-[]
+[
+  {"id": "allow-album", "effect": "allow", "database_id": "default", "table": "album"},
+  {"id": "allow-artist", "effect": "allow", "database_id": "default", "table": "artist"},
+  {"id": "allow-genre", "effect": "allow", "database_id": "default", "table": "genre"},
+  {"id": "allow-label", "effect": "allow", "database_id": "default", "table": "label"},
+  {"id": "allow-record-label", "effect": "allow", "database_id": "default", "table": "record_label"},
+  {"id": "allow-recording-artist", "effect": "allow", "database_id": "default", "table": "recording_artist"},
+  {"id": "allow-track", "effect": "allow", "database_id": "default", "table": "track"}
+]
 EOF
 
 # Generate a self-signed TLS certificate for the nginx edge.

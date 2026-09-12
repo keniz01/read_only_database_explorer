@@ -54,10 +54,16 @@ class Settings:
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY") or read_secret_from_file(os.getenv("OPENROUTER_API_KEY_FILE", ""))
     AI_MODEL: str = os.getenv("AI_MODEL") or read_secret_from_file(os.getenv("AI_MODEL_FILE", ""))
     AI_BASE_URL: str = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
-    AI_REQUEST_TIMEOUT: float = 15.0
+    AI_REQUEST_TIMEOUT: float = 30.0
     AI_MAX_TOKENS: int = 300
     AI_RETRIES: int = 3
     AI_BACKOFF_BASE: float = 2.0
+    # Disable extended reasoning on models that support it (e.g. NVIDIA Nemotron
+    # on OpenRouter). Reasoning output adds latency and often pollutes `content`
+    # with chain-of-thought prose instead of a clean SQL statement.
+    AI_DISABLE_REASONING: bool = os.getenv(
+        "AI_DISABLE_REASONING", "true"
+    ).strip().lower() not in {"0", "false", "no", "off"}
 
     # Embedding Configuration
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or read_secret_from_file(os.getenv("GEMINI_API_KEY_FILE", ""))

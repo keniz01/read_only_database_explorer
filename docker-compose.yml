@@ -56,6 +56,7 @@ services:
       AI_MODEL_FILE: /run/secrets/ai_model
       EMBEDDING_MODEL_FILE: /run/secrets/embedding_model
       AI_BASE_URL: ${AI_BASE_URL:-https://openrouter.ai/api/v1}
+      AI_DISABLE_REASONING: ${AI_DISABLE_REASONING:-true}
       EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-768}
       AUTH0_CLIENT_ID_FILE: /run/secrets/auth0_client_id
       AUTH0_CLIENT_SECRET_FILE: /run/secrets/auth0_client_secret
@@ -84,6 +85,7 @@ services:
       AUTH0_DOMAIN_FILE: /run/secrets/auth0_domain
       AUTH0_AUDIENCE: ${AUTH0_AUDIENCE:-https://secure-db-access-gateway-api}
       SQL_DATA_SCHEMA: ${SQL_DATA_SCHEMA:-music}
+      SQL_QUERY_COST_THRESHOLD: ${SQL_QUERY_COST_THRESHOLD:-16}
       CORS_ORIGINS: http://localhost:5173,https://localhost:5173,https://localhost:8443
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-lgtm:4318
       OTEL_SERVICE_NAME: sql-query-api
