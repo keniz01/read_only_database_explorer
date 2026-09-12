@@ -81,12 +81,12 @@ EOF
 
 cat > secrets/frontend_url.txt << 'EOF'
 # Frontend URL
-http://localhost:5173
+https://localhost:8443
 EOF
 
 cat > secrets/react_app_url.txt << 'EOF'
 # React app URL
-http://localhost:5173
+https://localhost:8443
 EOF
 
 cat > secrets/database_url.txt << 'EOF'
