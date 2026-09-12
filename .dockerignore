@@ -1,0 +1,27 @@
+.git
+.vscode
+.DS_Store
+
+# Never ship secrets into a build context: the local env file (real values),
+# any TLS key material, and the legacy secrets/ directory.
+.env
+.env.*
+certs/
+secrets/
+
+# Python
+**/__pycache__
+**/*.pyc
+*.egg-info
+.pytest_cache
+.ruff_cache
+
+# Virtual environments / local tooling
+**/.venv
+.venv
+venv
+
+# Node.js
+node_modules
+dist
+build

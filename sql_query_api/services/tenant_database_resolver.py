@@ -15,6 +15,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
+from shared_secrets import read_secret
+
 from auth import Principal
 
 
@@ -98,18 +100,20 @@ class TenantDatabaseResolver:
     def from_environment(cls) -> TenantDatabaseResolver:
         """Load tenant mappings from JSON in an environment variable or secret file."""
         raw_config = os.getenv("TENANT_DATABASES_JSON", "").strip()
-        config_file = os.getenv("TENANT_DATABASES_FILE", "").strip()
-        if not raw_config and config_file:
-            try:
-                with open(config_file, encoding="utf-8") as handle:
-                    raw_config = handle.read().strip()
-            except FileNotFoundError:
-                raw_config = ""
+        if not raw_config:
+            raw_config = read_secret(
+                "TENANT_DATABASES_JSON",
+                required=True,
+                error_message=(
+                    "Tenant database configuration is required via TENANT_DATABASES_JSON "
+                    "or TENANT_DATABASES_JSON_FILE."
+                ),
+            )
 
         if not raw_config:
             raise RuntimeError(
                 "Tenant database configuration is required via TENANT_DATABASES_JSON "
-                "or TENANT_DATABASES_FILE."
+                "or TENANT_DATABASES_JSON_FILE."
             )
         try:
             parsed = json.loads(raw_config)
@@ -119,16 +123,6 @@ class TenantDatabaseResolver:
         if not bindings:
             raise RuntimeError("Tenant database configuration must contain at least one mapping.")
         return cls(bindings)
-
-    @staticmethod
-    def _read_secret(file_path: str) -> str:
-        if not file_path:
-            return ""
-        try:
-            with open(file_path, encoding="utf-8") as handle:
-                return handle.read().strip()
-        except FileNotFoundError:
-            return ""
 
     @classmethod
     def _parse_bindings(cls, parsed: object) -> list[TenantDatabaseConfig]:

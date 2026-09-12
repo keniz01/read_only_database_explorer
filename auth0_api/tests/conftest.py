@@ -22,7 +22,6 @@ def mock_settings():
     with patch.multiple(settings, 
                         AUTH0_DOMAIN="test-auth0-domain",
                         AUTH0_CLIENT_ID="test-client-id",
-                        SESSION_SECRET_KEY="test-secret",
                         APP_SECRET_KEY="test-secret"):
         yield settings
 

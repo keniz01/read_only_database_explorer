@@ -217,17 +217,22 @@ class PolicyEvaluator:
         """Load policy configuration from the environment, failing fast in production."""
         import os
 
+        from shared_secrets import is_environment_production, read_secret
+
+        _production = is_environment_production()
         raw = os.getenv("POLICY_POLICIES_JSON", "").strip()
-        config_file = os.getenv("POLICY_POLICIES_JSON_FILE", "").strip()
-        if not raw and config_file:
-            try:
-                with open(config_file, encoding="utf-8") as handle:
-                    raw = handle.read().strip()
-            except FileNotFoundError:
-                raw = ""
+        if not raw:
+            raw = read_secret(
+                "POLICY_POLICIES_JSON",
+                required=_production and not os.getenv("CI"),
+                error_message=(
+                    "Missing required POLICY_POLICIES_JSON environment variable or "
+                    "POLICY_POLICIES_JSON_FILE secret for policy configuration."
+                ),
+            )
         if not raw:
             # In production we require an explicit policy configuration; otherwise fall back to an empty evaluator.
-            if os.getenv("ENVIRONMENT", "").lower() == "production" and not os.getenv("CI"):
+            if _production and not os.getenv("CI"):
                 raise RuntimeError(
                     "Missing required POLICY_POLICIES_JSON environment variable or "
                     "POLICY_POLICIES_JSON_FILE secret for policy configuration."

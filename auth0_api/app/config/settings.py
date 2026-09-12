@@ -5,20 +5,15 @@ Loads environment variables and provides configuration objects.
 
 import json
 import os
-from typing import Any, Dict, List
+from typing import Dict
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+from shared_secrets import is_environment_production, read_secret
+
+# Load environment variables from .env file (development convenience).
 load_dotenv()
 
-
-def read_secret_from_file(file_path: str) -> str:
-    """Read secret from file, fallback to empty string if file not found."""
-    try:
-        with open(file_path, 'r') as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        return ""
+_PRODUCTION = is_environment_production()
 
 
 class Settings:
@@ -29,30 +24,47 @@ class Settings:
     APP_VERSION: str = "0.1.0"
     LOG_LEVEL: str = os.getenv("AUTH_LOG_LEVEL", "INFO").upper()
 
-    # Secret Keys - Support both direct env vars and file-based secrets
-    SECRET_KEY: str = os.getenv("SECRET_KEY") or read_secret_from_file(os.getenv("SECRET_KEY_FILE", ""))
-    SESSION_SECRET_KEY: str = os.getenv("SESSION_SECRET_KEY") or read_secret_from_file(os.getenv("SESSION_SECRET_KEY_FILE", ""))
-    APP_SECRET_KEY: str = os.getenv("APP_SECRET_KEY") or read_secret_from_file(os.getenv("SECRET_KEY_FILE", ""))
+    # Session signing key. Required in production; it signs the gateway_session
+    # cookie, so an empty value would silently produce forgeable sessions.
+    APP_SECRET_KEY: str = read_secret(
+        "APP_SECRET_KEY",
+        required=_PRODUCTION,
+    )
     SESSION_MAX_AGE: int = int(os.getenv("SESSION_MAX_AGE", "3600"))
     SESSION_COOKIE_SECURE: bool = os.getenv(
-        "SESSION_COOKIE_SECURE", "true" if os.getenv("ENVIRONMENT", "development").lower() == "production" else "false"
+        "SESSION_COOKIE_SECURE", "true" if _PRODUCTION else "false"
     ).strip().lower() in {"1", "true", "yes"}
 
-    # Auth0 Configuration
-    AUTH0_DOMAIN: str = os.getenv("AUTH0_DOMAIN") or read_secret_from_file(os.getenv("AUTH0_DOMAIN_FILE", ""))
-    AUTH0_CLIENT_ID: str = os.getenv("AUTH0_CLIENT_ID") or read_secret_from_file(os.getenv("AUTH0_CLIENT_ID_FILE", ""))
-    AUTH0_CLIENT_SECRET: str = os.getenv("AUTH0_CLIENT_SECRET") or read_secret_from_file(os.getenv("AUTH0_CLIENT_SECRET_FILE", ""))
-    AUTH0_AUDIENCE: str = os.getenv("AUTH0_AUDIENCE") or read_secret_from_file(os.getenv("AUTH0_AUDIENCE_FILE", ""))
+    # Auth0 Configuration. Required in production so OIDC discovery fails fast
+    # at startup instead of at the first login attempt.
+    AUTH0_DOMAIN: str = read_secret(
+        "AUTH0_DOMAIN",
+        required=_PRODUCTION,
+    )
+    AUTH0_CLIENT_ID: str = read_secret(
+        "AUTH0_CLIENT_ID",
+        required=_PRODUCTION,
+    )
+    AUTH0_CLIENT_SECRET: str = read_secret(
+        "AUTH0_CLIENT_SECRET",
+        required=_PRODUCTION,
+    )
+    # AUTH0_AUDIENCE: keep the legacy AUTH0_API_AUDIENCE short-circuit so old
+    # deployments keep working; read_secret still covers AUTH0_AUDIENCE(_FILE).
+    AUTH0_AUDIENCE: str = os.getenv("AUTH0_AUDIENCE") or os.getenv("AUTH0_API_AUDIENCE") or read_secret(
+        "AUTH0_AUDIENCE",
+        required=_PRODUCTION,
+    )
     AUTH0_SCOPE: str = "openid profile email organizations"
     AUTH0_ORG_ID_CLAIM: str = "https://app.secure-db-access-gateway.org/tenant_id"
 
     # Frontend Configuration
-    FRONTEND_URL: str = os.getenv("FRONTEND_URL") or read_secret_from_file(os.getenv("FRONTEND_URL_FILE", ""))
-    REACT_APP_URL: str = os.getenv("REACT_APP_URL") or read_secret_from_file(os.getenv("REACT_APP_URL_FILE", ""))
+    FRONTEND_URL: str = read_secret("FRONTEND_URL")
+    REACT_APP_URL: str = read_secret("REACT_APP_URL")
 
     # AI/LLM Configuration
-    OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY") or read_secret_from_file(os.getenv("OPENROUTER_API_KEY_FILE", ""))
-    AI_MODEL: str = os.getenv("AI_MODEL") or read_secret_from_file(os.getenv("AI_MODEL_FILE", ""))
+    OPENROUTER_API_KEY: str = read_secret("OPENROUTER_API_KEY")
+    AI_MODEL: str = read_secret("AI_MODEL")
     AI_BASE_URL: str = os.getenv("AI_BASE_URL", "https://openrouter.ai/api/v1")
     AI_REQUEST_TIMEOUT: float = 30.0
     AI_MAX_TOKENS: int = 300
@@ -66,12 +78,12 @@ class Settings:
     ).strip().lower() not in {"0", "false", "no", "off"}
 
     # Embedding Configuration
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or read_secret_from_file(os.getenv("GEMINI_API_KEY_FILE", ""))
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL") or read_secret_from_file(os.getenv("EMBEDDING_MODEL_FILE", ""))
+    GEMINI_API_KEY: str = read_secret("GEMINI_API_KEY")
+    EMBEDDING_MODEL: str = read_secret("EMBEDDING_MODEL")
     EMBEDDING_DIMENSIONS: int = int(os.getenv("EMBEDDING_DIMENSIONS", "768"))
 
     # SQL Query API Configuration
-    SQL_QUERY_API_URL: str = os.getenv("SQL_QUERY_API_URL") or read_secret_from_file(os.getenv("SQL_QUERY_API_URL_FILE", "")) or "http://localhost:8002/graphql"
+    SQL_QUERY_API_URL: str = read_secret("SQL_QUERY_API_URL", default="http://localhost:8002/graphql")
 
     # Multi-tenancy / org metadata
     ORG_DB_CONNECTIONS: Dict[str, str] = {}

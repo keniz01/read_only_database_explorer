@@ -1,23 +1,41 @@
-FROM python:3.12-slim
+# Stage 1: Build virtual environment
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY pyproject.toml uv.lock ./
+# Build context is the repository root (see docker-compose.yml). Preserve the
+# repo layout so the compiled `../shared` path dependency resolves.
+COPY shared /app/shared
+COPY auth0_api/pyproject.toml auth0_api/uv.lock /app/auth0_api/
 
-# Install Python dependencies
-RUN pip install --no-cache-dir uv && uv pip install --system -e .
+RUN pip install --no-cache-dir uv && \
+    uv venv /opt/venv && \
+    cd /app/auth0_api && \
+    uv pip compile pyproject.toml -o /tmp/requirements.txt && \
+    VIRTUAL_ENV=/opt/venv uv pip install --no-cache -r /tmp/requirements.txt
 
-# Copy application code
-COPY . .
+# Stage 2: Minimal runtime
+FROM python:3.12-slim AS runner
 
-# Expose port
+WORKDIR /app/auth0_api
+
+# Create non-root user and group
+RUN groupadd -g 10001 appgroup && \
+    useradd -u 10001 -g appgroup -s /sbin/nologin -d /app/auth0_api appuser
+
+# Copy virtual environment from builder
+COPY --from=builder --chown=appuser:appgroup /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code with non-root ownership
+COPY --chown=appuser:appgroup auth0_api/ .
+
+USER appuser
+
 EXPOSE 8001
 
-# Run the application
 CMD ["python", "main.py"]

@@ -17,14 +17,14 @@ The Secure DB Access Gateway is a secure, full-stack application designed to saf
 ## 2. Standard Dev Setup, Run, and Test Commands
 
 ### 🐳 Docker Compose (Recommended)
-1. Initialize Docker secrets:
+1. Bootstrap the env file and (dev) TLS certificate:
    ```bash
-   ./setup-secrets.sh
-   # Edit files in the secrets/ directory with actual credentials.
+   ./scripts/bootstrap-dev.sh
+   # Fill in real credentials in .env (copied from .env.example).
    ```
 2. Build and start the stack:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
    - Web App: `http://localhost:5173`
    - Nginx Gateway: `https://localhost:8443` (TLS; `http://localhost:8080` redirects to HTTPS)
@@ -70,8 +70,8 @@ as a governed multi-tenant access path.
 ### Direct Terminal Queries (Headless Mode)
 Output results cleanly to standard output (stdout) as JSON or CSV:
 ```bash
-./explore.py --db secrets/database_url.txt --table artist --access-token-file "$CLI_TOKEN_FILE" --format json --limit 10
-./explore.py --db secrets/database_url.txt --sql "SELECT title, release_year FROM album" --access-token-file "$CLI_TOKEN_FILE" --format csv
+DATABASE_URL="$DATABASE_URL" ./explore.py --table artist --access-token-file "$CLI_TOKEN_FILE" --format json --limit 10
+DATABASE_URL="$DATABASE_URL" ./explore.py --sql "SELECT title, release_year FROM album" --access-token-file "$CLI_TOKEN_FILE" --format csv
 ```
 
 The CLI requires a validated OIDC/Auth0 access token for database queries. Set
@@ -84,14 +84,14 @@ access and a workload/service-account token for automation.
 ### Autonomous AI Schema-to-Wiki Generator
 Crawl the active database schema, map relations, and generate a cross-linked Markdown documentation wiki:
 ```bash
-./explore.py --db secrets/database_url.txt --generate-wiki docs/wiki
+DATABASE_URL="$DATABASE_URL" ./explore.py --generate-wiki docs/wiki
 ```
 
 ### Intelligent Data Audit/Diagnostic Mode
 Pass a query result profile or logs into the tool (via query or stdin) to return a 3-line expert diagnostic summary pointing out anomalies, NULL clusters, or trends:
 ```bash
 # Analyze query results directly:
-./explore.py --db secrets/database_url.txt --table track --limit 10 --analyze
+DATABASE_URL="$DATABASE_URL" ./explore.py --table track --limit 10 --analyze
 
 # Analyze piped logs or data stream:
 cat db_logs.log | ./explore.py --analyze
@@ -116,7 +116,7 @@ Under no circumstances should any query other than simple `SELECT` statements be
 
 ### 🔑 3. Mandatory Credentials Extraction
 - Hardcoding passwords, secrets, or API keys in code or configuration files is strictly forbidden.
-- Extract all credentials, database URLs, and API keys via environment variables or Docker secrets files (e.g., `os.getenv` or `read_secret_from_file`).
+- Extract all credentials, database URLs, and API keys via environment variables or the shared `shared_secrets.read_secret` loader (which reads `NAME` env vars and falls back to an injected `NAME_FILE` path).
 
 ### ⚙️ 4. Non-Interactive CLI Layers
 - CLI tools must support non-interactive parameter overrides (`--headless`, `--json`) and read standard input safely without blocking (using `select.select` on stdin).

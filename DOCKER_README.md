@@ -1,6 +1,6 @@
 # Docker Setup
 
-This project now supports running the entire application stack using Docker Compose, with PostgreSQL running locally.
+This project supports running the entire application stack using Docker Compose, with PostgreSQL running locally.
 
 ## Prerequisites
 
@@ -9,25 +9,20 @@ This project now supports running the entire application stack using Docker Comp
 
 ## Quick Start
 
-1. **Ensure PostgreSQL is running locally**
+1. **Bootstrap local env + TLS certs** (first time only):
    ```bash
-   # Check if PostgreSQL is running
-   pg_isready -p 5432
-
-   # If not running, start it (varies by system)
-   # macOS with Homebrew: brew services start postgresql
-   # Ubuntu: sudo systemctl start postgresql
+   ./scripts/bootstrap-dev.sh
+   # Creates .env from .env.example (never overwrites) and generates a
+   # self-signed TLS certificate into certs/ if one does not exist.
    ```
-
-2. **Set up secrets** (first time only):
-   ```bash
-   ./setup-secrets.sh
-   # Edit the files in secrets/ with your actual credentials
-   ```
+2. **Fill in real values in `.env`** — Auth0 credentials, `APP_SECRET_KEY`
+   (generate with `openssl rand -hex 32`), AI keys, the tenant database
+   mapping and policy JSON (single line each). See the comments in
+   `.env.example`.
 
 3. **Run the application stack**:
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
 This will start:
@@ -38,8 +33,8 @@ This will start:
 
 **Note**: PostgreSQL runs on your local machine, not in a container.
 
-**TLS**: `setup-secrets.sh` generates a self-signed certificate
-(`secrets/web_tls_cert.pem` / `secrets/web_tls_key.pem`). Accept the browser
+**TLS**: `scripts/bootstrap-dev.sh` generates a self-signed certificate
+(`certs/web_tls_cert.pem` / `certs/web_tls_key.pem`). Accept the browser
 warning during local development and replace with a trusted CA certificate for
 production. Because HTTPS is enforced, the browser stores session cookies with
 the `Secure` flag.
@@ -51,17 +46,17 @@ the `Secure` flag.
 - **Ports**: 8080 (HTTP, redirects to HTTPS), 8443 (HTTPS)
 - **Role**: Terminates TLS and proxies `/api` requests from the web app to the Auth0 API service
 - **Config**: `./nginx/nginx.conf`
-- **TLS certs**: mounted from `secrets/web_tls_cert.pem` and `secrets/web_tls_key.pem`
+- **TLS certs**: bind-mounted from `certs/web_tls_cert.pem` and `certs/web_tls_key.pem`
 
 ### Auth0 API
-- **Build**: ./auth0_api
+- **Build**: context `.` / `auth0_api/Dockerfile`
 - **Port**: 8001
-- **Secrets**: All Auth0 and AI credentials loaded from Docker secrets
+- **Secrets**: Auth0, AI, and session-signing credentials injected as environment variables from `.env` (`env_file`)
 
 ### SQL Query API
-- **Build**: ./sql_query_api
+- **Build**: context `.` / `sql_query_api/Dockerfile`
 - **Port**: 8002
-- **Secrets**: Database URL loaded from Docker secrets
+- **Secrets**: Tenant database mappings and access policies injected as environment variables (`TENANT_DATABASES_JSON`, `POLICY_POLICIES_JSON`) from `.env`
 
 ### Web App
 - **Build**: ./web-app
@@ -70,58 +65,80 @@ the `Secure` flag.
 
 ## Secrets Management
 
-Sensitive configuration is now managed through Docker secrets instead of .env files:
+There are no secret files in the repository. All credentials live in a single
+env file injected by Compose:
 
-- Secrets are stored in the `secrets/` directory as individual files
-- Each secret file contains a single value (e.g., API keys, passwords)
-- Docker Compose mounts these as secrets in containers
-- Applications read secrets from `/run/secrets/` directory
+- **Dev**: `.env` (created from `.env.example` by `scripts/bootstrap-dev.sh`)
+- **Production**: `/etc/gateway/gateway.env` (provisioned manually, `chmod 600`)
+- Compose injects it into `auth0_api` and `sql_query_api` via `env_file`
+  (override the path with `GATEWAY_ENV_FILE`)
+- Both services read values with the shared `read_secret` loader
+  (`shared/shared_secrets`), which checks the env var first and then an
+  optional `NAME_FILE` path for orchestrators that mount secrets as files
+- In `ENVIRONMENT=production` the services fail fast if a required secret is
+  missing, so a misconfigured deployment aborts at startup
 
-### Secret Files
+### Editing a secret (dev)
 
-- `secret_key.txt` - Flask secret key
-- `session_secret_key.txt` - Session secret
-- `auth0_domain.txt` - Auth0 domain
-- `auth0_client_id.txt` - Auth0 client ID
-- `auth0_client_secret.txt` - Auth0 client secret
-- `github_token.txt` - GitHub token for Azure OpenAI
-- `database_url.txt` - PostgreSQL connection string
-- And more...
+```bash
+# values are plaintext in .env — just edit and restart:
+docker compose up -d
+```
+
+### Sending secrets to production
+
+```bash
+# Source of truth: your password manager / secret manager.
+# Copy the env file to the host:
+sudo install -m 600 -o deploy -g deploy gateway.env /etc/gateway/gateway.env
+docker compose --env-file /etc/gateway/gateway.env up -d --build
+```
+
+Keep a copy of the env file in a password manager — the host file is a copy,
+not the backup.
 
 ## Development
 
-For development, you can modify the secrets files and rebuild:
+For development, you can edit `.env` and rebuild:
 
 ```bash
-docker-compose down
-docker-compose up --build
+docker compose down
+docker compose up --build
 ```
 
 ## Production
 
-For production deployment:
-
-1. Move secrets to a secure location outside the repository
-2. Update the `docker-compose.yml` secrets file paths
-3. Use Docker Swarm or Kubernetes secrets for better security
-4. Configure proper CORS origins and external database
+1. Provision `/etc/gateway/gateway.env` on the host from your secret manager /
+   password manager, and set `GATEWAY_ENV_FILE` accordingly (default `.env`).
+2. `ENVIRONMENT=production` enables startup fail-fast for required secrets.
+3. Replace the self-signed TLS cert with a trusted CA certificate (or ACME).
+4. Configure proper CORS origins and external database.
+5. At scale, inject the `NAME` env vars from a real secret manager (AWS
+   Secrets Manager, Vault, Azure Key Vault, Doppler, …) — the
+   `NAME`/`NAME_FILE` loader already supports any injected source, so you can
+   swap the manual env file without code changes.
 
 ## Troubleshooting
 
 ### Check container logs
 ```bash
-docker-compose logs [service_name]
+docker compose logs [service_name]
 ```
 
 ### Restart services
 ```bash
-docker-compose restart [service_name]
+docker compose restart [service_name]
 ```
+
+### "Required secret ... is not set" on startup
+Your `.env`/`gateway.env` is missing a value listed in `.env.example`. Fill it
+in and `docker compose up -d`. This guard intentionally fails fast when
+`ENVIRONMENT=production`.
 
 ### Clean rebuild
 ```bash
-docker-compose down -v
-docker-compose up --build
+docker compose down -v
+docker compose up --build
 ```
 
 ## Architecture
@@ -132,7 +149,7 @@ The Docker setup creates a complete development environment with:
 - Isolated PostgreSQL database
 - Backend APIs with proper networking
 - Frontend served with hot reload
-- Secure secrets management
+- Env-file secret management
 - Health checks for database readiness
 
 ### Request flow (Auth API)

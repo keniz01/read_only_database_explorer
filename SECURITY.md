@@ -166,33 +166,63 @@ apiClient.interceptors.request.use((config) => {
 
 ## Environment Configuration
 
+### Secrets storage model
+
+No secret files live in this repository. Real credentials are injected as
+environment variables from a single gitignored env file (`.env` for local
+development, `/etc/gateway/gateway.env` on a production host) that is
+provisioned manually. The shared `shared_secrets` loader resolves each value
+in precedence order:
+
+1. `NAME` environment variable (injected by Compose `env_file`, a secret
+   manager, or an orchestrator such as Kubernetes).
+2. `NAME_FILE` path on disk (for orchestrators that mount secrets as files;
+   content is plaintext).
+3. A configured default (development only).
+
+Required secrets are validated at startup. In `ENVIRONMENT=production` the
+services **fail fast** when a required secret is absent, so a misconfigured
+deployment can never start serving with empty credentials (e.g. a blank
+session-signing key).
+
 ### Required for Production
 
-```bash
-# Auth0 API (.env)
-AUTH0_DOMAIN=your-domain.auth0.com
-AUTH0_CLIENT_ID=xxxxx
-AUTH0_CLIENT_SECRET=xxxxx
-APP_SECRET_KEY=generate-strong-random-key
-SESSION_SECRET_KEY=generate-strong-random-key
-CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+Bootstrap a local env file and fill it in manually:
 
-# SQL Query API (.env)
-DATABASE_URL=postgresql://user:password@host/db
-CORS_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+```bash
+# Development: copy .env.example -> .env and edit values.
+./scripts/bootstrap-dev.sh
+
+# Production: copy .env.example to the host and fill in real values.
+sudo install -m 600 -o deploy -g deploy gateway.env /etc/gateway/gateway.env
+docker compose --env-file /etc/gateway/gateway.env up -d --build
 ```
+
+The env file supplies every value the services need — Auth0 credentials, the
+session-signing key (`APP_SECRET_KEY`), AI keys, the tenant database mapping
+(`TENANT_DATABASES_JSON`), and the data-access policy
+(`POLICY_POLICIES_JSON`). See `.env.example` for the full list.
 
 ### Key Management Best Practices
 
-1. **Never commit secrets** - Use `.env.example` as template
-2. **Rotate keys regularly** - Especially in production
+1. **Many copies, one authority.** The env file on each host is a *copy*. Keep
+   the source of truth in a password manager (or a secret manager) and restore
+   the host file from it. If `/etc/gateway/gateway.env` is the only copy and
+   the disk dies, the secrets are lost.
+2. **Never commit real values** — `.env`, `gateway.env`, and TLS key material
+   are gitignored; commit only `.env.example` (names, no values).
 3. **Use strong random values** - Min 32 characters for secrets
-4. **Different secrets per environment** - Dev, staging, prod
-5. **Secure secret storage** - Use environment variable services:
-   - AWS Secrets Manager
-   - HashiCorp Vault
-   - Azure Key Vault
-   - Google Secret Manager
+   (`openssl rand -hex 32` for `APP_SECRET_KEY`).
+4. **Different secrets per environment** - Dev, staging, prod.
+5. **Protect the host** - `chmod 600` on the env file; anyone in the `docker`
+   group can read container env via `docker inspect` (docker access is
+   root-level access). Avoid `docker compose config` output in shared logs.
+6. **Rotation** - Update the source of truth, rewrite the host env file, and
+   `docker compose up -d` to recreate containers with the new values.
+7. **Scaled deployments** - The loader accepts any injected secret source, so
+   you can swap the manual env file for an init container or SDK from AWS
+   Secrets Manager / SSM, HashiCorp Vault, or Azure Key Vault / Google Secret
+   Manager without code changes: inject the values as `NAME` env vars.
 
 ## Testing Security
 

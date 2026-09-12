@@ -7,6 +7,56 @@ on:
     branches: [ main, master, "feat/*" ]
 
 jobs:
+  secret-scan:
+    name: Secret Scanning (gitleaks)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  test-shared-secrets:
+    name: Shared Secrets Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install and smoke-test shared-secrets
+        run: |
+          python -m pip install -e ./shared
+          python - <<'EOF'
+          import os, tempfile
+          from shared_secrets import read_secret, read_file_secret, MissingSecretError
+          assert read_secret('CI_DISABLED', required=False, default='x') == 'x'
+          try:
+              read_secret('CI_SHOULD_NOT_EXIST_XYZ', required=True)
+              raise SystemExit('required secret did not raise')
+          except MissingSecretError:
+              pass
+          with tempfile.NamedTemporaryFile('w', delete=False) as fh:
+              fh.write('secret-from-file')
+              fh.flush()
+          os.environ['CI_TEST_FILE'] = fh.name
+          assert read_secret('CI_TEST') == 'secret-from-file'
+          assert read_file_secret(fh.name) == 'secret-from-file'
+          print('shared-secrets OK')
+          EOF
+
   test-sql-query-api:
     name: SQL Query API Tests
     runs-on: ubuntu-latest
@@ -20,6 +70,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+
+      - name: Install shared-secrets dependency
+        run: |
+          python -m pip install -e ./shared
 
       - name: Install dependencies
         run: |
@@ -57,6 +111,10 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+
+      - name: Install shared-secrets dependency
+        run: |
+          python -m pip install -e ./shared
 
       - name: Install dependencies
         run: |

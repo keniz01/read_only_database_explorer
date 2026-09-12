@@ -13,7 +13,7 @@ Windows
 - $env:DATABASE_URL="postgresql+asyncpg://user:password@localhost:5432/mydb"
 - Production uses opaque logical database identifiers and server-side mappings.
   Set `ENVIRONMENT=production` and provide `TENANT_DATABASES_JSON` or
-  `TENANT_DATABASES_FILE` containing entries such as:
+  `TENANT_DATABASES_JSON_FILE` containing entries such as:
 
   ```json
   [
@@ -29,7 +29,7 @@ Windows
 
   Clients send only `database_id`; connection strings and credentials are never
   accepted from GraphQL requests. `TENANT_DATABASES_JSON` or
-  `TENANT_DATABASES_FILE` is required; there is no single-database fallback.
+  `TENANT_DATABASES_JSON_FILE` is required; there is no single-database fallback.
 
   Every authenticated access token must contain the configured tenant claim:
   `https://app.secure-db-access-gateway.org/tenant_id`. The application does
