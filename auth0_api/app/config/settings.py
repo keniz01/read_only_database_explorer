@@ -13,10 +13,15 @@ load_dotenv()
 
 
 def read_secret_from_file(file_path: str) -> str:
-    """Read secret from file, fallback to empty string if file not found."""
+    """Read secret from file, fallback to empty string if file not found.
+
+    Comment lines (starting with ``#``) are skipped so scaffolded secret
+    files can carry placeholder comments without corrupting the value.
+    """
     try:
         with open(file_path, 'r') as f:
-            return f.read().strip()
+            lines = [line for line in f if not line.lstrip().startswith('#')]
+            return "".join(lines).strip()
     except FileNotFoundError:
         return ""
 

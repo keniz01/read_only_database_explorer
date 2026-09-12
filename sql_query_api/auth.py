@@ -11,7 +11,8 @@ def read_secret_from_file(file_path: str) -> str:
     """Read secret from file, falling back to an empty string."""
     try:
         with open(file_path, encoding="utf-8") as handle:
-            return handle.read().strip()
+            lines = [line for line in handle if not line.lstrip().startswith("#")]
+            return "".join(lines).strip()
     except FileNotFoundError:
         return ""
 
