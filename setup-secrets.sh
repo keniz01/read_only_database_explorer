@@ -80,12 +80,10 @@ your-domain.auth0.com
 EOF
 
 cat > secrets/frontend_url.txt << 'EOF'
-# Frontend URL
 https://localhost:8443
 EOF
 
 cat > secrets/react_app_url.txt << 'EOF'
-# React app URL
 https://localhost:8443
 EOF
 
